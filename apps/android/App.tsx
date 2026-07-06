@@ -139,8 +139,7 @@ export default function App() {
   // AsyncStorage fallback functions
   const AsyncStorageGet = async (key: string): Promise<string | null> => {
     try {
-      const val = await require('@react-native-async-storage/async-storage').default.getItem(key);
-      return val;
+      return await AsyncStorage.getItem(key);
     } catch {
       return null;
     }
@@ -148,7 +147,7 @@ export default function App() {
 
   const AsyncStorageSet = async (key: string, value: string): Promise<void> => {
     try {
-      await require('@react-native-async-storage/async-storage').default.setItem(key, value);
+      await AsyncStorage.setItem(key, value);
     } catch {}
   };
 

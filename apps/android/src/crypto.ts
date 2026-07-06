@@ -1,9 +1,46 @@
 import { x25519 } from '@noble/curves/ed25519';
-import { aes_256_gcm } from '@noble/ciphers/webcrypto/aes';
 import * as Crypto from 'expo-crypto';
 import { Buffer } from 'buffer';
 
-// Hex converter helper
+// Polyfill TextEncoder and TextDecoder for curves
+if (typeof global.TextEncoder === 'undefined') {
+  global.TextEncoder = class TextEncoder {
+    encode(str: string): Uint8Array {
+      const arr = [];
+      for (let i = 0; i < str.length; i++) {
+        arr.push(str.charCodeAt(i));
+      }
+      return new Uint8Array(arr);
+    }
+  };
+}
+
+if (typeof global.TextDecoder === 'undefined') {
+  global.TextDecoder = class TextDecoder {
+    decode(arr: Uint8Array): string {
+      let str = '';
+      for (let i = 0; i < arr.length; i++) {
+        str += String.fromCharCode(arr[i]);
+      }
+      return str;
+    }
+  };
+}
+
+// Polyfill global crypto
+if (typeof global.crypto === 'undefined') {
+  global.crypto = {
+    getRandomValues: (array: Uint8Array) => {
+      const randomBytes = Crypto.getRandomBytes(array.length);
+      array.set(randomBytes);
+      return array;
+    }
+  } as any;
+}
+
+const forge = require('node-forge');
+
+// Hex converter helpers
 export function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map(b => b.toString(16).padStart(2, '0'))
@@ -17,6 +54,23 @@ export function hexToBytes(hex: string): Uint8Array {
   }
   return result;
 }
+
+const bytesToBinary = (bytes: Uint8Array): string => {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) {
+    bin += String.fromCharCode(bytes[i]);
+  }
+  return bin;
+};
+
+const binaryToBytes = (binStr: string): Uint8Array => {
+  const len = binStr.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binStr.charCodeAt(i);
+  }
+  return bytes;
+};
 
 /**
  * Generates X25519 private key and matching public key.
@@ -36,14 +90,11 @@ export async function deriveSharedKey(
 ): Promise<Uint8Array> {
   const sharedSecret = x25519.getSharedSecret(privateKey, peerPublicKey);
   
-  // Custom simple HKDF-SHA256 extraction & expansion using expo-crypto SHA-256
-  // Extract: SHA-256(salt=all_zeros, sharedSecret)
   const salt = new Uint8Array(32);
   const extractInput = new Uint8Array(salt.length + sharedSecret.length);
   extractInput.set(salt, 0);
   extractInput.set(sharedSecret, salt.length);
   
-  // Calculate SHA-256 hash using expo-crypto
   const prkHex = await Crypto.digestStringAsync(
     Crypto.CryptoDigestAlgorithm.SHA256,
     Buffer.from(extractInput).toString('base64'),
@@ -52,7 +103,6 @@ export async function deriveSharedKey(
   
   const prk = hexToBytes(prkHex);
 
-  // Expand: SHA-256(prk, info + counter)
   const info = new TextEncoder().encode('clipbridge-sync-key');
   const expandInput = new Uint8Array(prk.length + info.length + 1);
   expandInput.set(prk, 0);
@@ -75,11 +125,9 @@ export function generateNonce(): Uint8Array {
   const nonce = new Uint8Array(12);
   const now = Date.now();
 
-  // First 8 bytes: timestamp
   const view = new DataView(nonce.buffer);
-  view.setBigUint64(0, BigInt(now), false); // Big endian
+  view.setBigUint64(0, BigInt(now), false);
 
-  // Last 4 bytes: random bytes
   const randomBytes = Crypto.getRandomBytes(4);
   nonce.set(randomBytes, 8);
 
@@ -95,17 +143,21 @@ export async function encryptPayload(
   plaintext: string,
   nonce: Uint8Array
 ): Promise<{ ciphertext: string; tag: string }> {
-  const ptBytes = new TextEncoder().encode(plaintext);
-  const cipher = aes_256_gcm(key, nonce);
-  const encrypted = await cipher.encrypt(ptBytes);
-  
-  // Appended tag size is 16 bytes
-  const tagSize = 16;
-  const ciphertextBytes = encrypted.subarray(0, encrypted.length - tagSize);
-  const tagBytes = encrypted.subarray(encrypted.length - tagSize);
+  const keyBytes = forge.util.createBuffer(bytesToBinary(key));
+  const nonceBytes = forge.util.createBuffer(bytesToBinary(nonce));
+  const ptRaw = forge.util.createBuffer(plaintext, 'utf8');
+
+  // Initialize forge cipher
+  const cipher = forge.cipher.createCipher('AES-GCM', keyBytes);
+  cipher.start({ iv: nonceBytes });
+  cipher.update(ptRaw);
+  cipher.finish();
+
+  const ctBytes = binaryToBytes(cipher.output.getBytes());
+  const tagBytes = binaryToBytes(cipher.mode.tag.getBytes());
 
   return {
-    ciphertext: bytesToHex(ciphertextBytes),
+    ciphertext: bytesToHex(ctBytes),
     tag: bytesToHex(tagBytes)
   };
 }
@@ -120,15 +172,20 @@ export async function decryptPayload(
   nonce: Uint8Array,
   tagHex: string
 ): Promise<string> {
-  const ciphertext = hexToBytes(ciphertextHex);
-  const tag = hexToBytes(tagHex);
+  const keyBytes = forge.util.createBuffer(bytesToBinary(key));
+  const nonceBytes = forge.util.createBuffer(bytesToBinary(nonce));
+  const ctBytes = forge.util.createBuffer(bytesToBinary(hexToBytes(ciphertextHex)));
+  const tagBytes = forge.util.createBuffer(bytesToBinary(hexToBytes(tagHex)));
 
-  const encrypted = new Uint8Array(ciphertext.length + tag.length);
-  encrypted.set(ciphertext, 0);
-  encrypted.set(tag, ciphertext.length);
+  // Initialize forge decipher
+  const decipher = forge.cipher.createDecipher('AES-GCM', keyBytes);
+  decipher.start({ iv: nonceBytes, tag: tagBytes });
+  decipher.update(ctBytes);
+  
+  const pass = decipher.finish();
+  if (!pass) {
+    throw new Error('AES-GCM Decryption Integrity Verification Failed');
+  }
 
-  const cipher = aes_256_gcm(key, nonce);
-  const decryptedBytes = await cipher.decrypt(encrypted);
-
-  return new TextDecoder().decode(decryptedBytes);
+  return decipher.output.toString();
 }
