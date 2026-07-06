@@ -20,10 +20,11 @@ import {
   QrCode
 } from "lucide-react";
 
-// Lazy-loaded tauri invoke helper with automatic browser fallback
+import { invoke } from "@tauri-apps/api/core";
+
+// Tauri invoke helper with automatic browser fallback
 const callTauri = async (cmd: string, args: any = {}): Promise<any> => {
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
     return await invoke(cmd, args);
   } catch (err) {
     console.warn(`Tauri invoke failed for ${cmd}, falling back to mock:`, err);
