@@ -1,0 +1,35 @@
+[package]
+name = "clipbridge"
+version = "1.0.0"
+description = "Near-instant, secure, local clipboard sync"
+authors = ["ClipBridge Team"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.0.0-rc", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0-rc", features = ["tray-icon"] }
+tauri-plugin-shell = "2.0.0-rc"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.36", features = ["full"] }
+axum = { version = "0.7", features = ["ws"] }
+tower-http = { version = "0.5", features = ["cors"] }
+arboard = "3.3"
+mdns-sd = "0.7"
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+aes-gcm = "0.10"
+sha2 = "0.10"
+hex = "0.4"
+dirs = "4.0"
+hostname = "0.3"
+rand = "0.8"
+uuid = { version = "1.7", features = ["v4", "serde"] }
+qrcode-generator = "4.1"
+local-ip-address = "0.6"
+once_cell = "1.19"
+base64 = "0.21"
+futures-util = "0.3"
+tracing = "0.1"
+tracing-subscriber = "0.3"

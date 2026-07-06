@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "ClipBridge",
+    "slug": "clipbridge",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.clipbridge.app"
+    },
+    "android": {
+      "package": "com.clipbridge.app",
+      "permissions": [
+        "CAMERA"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow ClipBridge to access camera to scan pairing QR codes."
+        }
+      ]
+    ]
+  }
+}
