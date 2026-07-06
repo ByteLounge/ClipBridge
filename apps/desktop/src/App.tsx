@@ -183,8 +183,6 @@ export default function App() {
 
   const handleCopy = async (text: string) => {
     await callTauri("set_clipboard", { content: text });
-    // Visual flash or notification
-    alert("Copied to clipboard!");
   };
 
   const handleDeleteClip = async (id: string) => {
@@ -198,10 +196,8 @@ export default function App() {
   };
 
   const handleUnpair = async (id: string) => {
-    if (confirm("Are you sure you want to unpair this device?")) {
-      await callTauri("delete_paired_device", { device_id: id });
-      setPairedDevices(prev => prev.filter(d => d.id !== id));
-    }
+    await callTauri("delete_paired_device", { device_id: id });
+    setPairedDevices(prev => prev.filter(d => d.id !== id));
   };
 
   const startPairing = async () => {
