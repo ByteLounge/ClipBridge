@@ -1,3 +1,4 @@
+import './src/polyfills';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
