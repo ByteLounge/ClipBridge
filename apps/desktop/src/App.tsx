@@ -186,17 +186,29 @@ export default function App() {
   };
 
   const handleDeleteClip = async (id: string) => {
-    await callTauri("delete_clipboard_item", { id });
+    try {
+      await callTauri("delete_clipboard_item", { id });
+    } catch (err) {
+      console.error("Failed to delete clip on backend:", err);
+    }
     setClipboardList(prev => prev.filter(c => c.id !== id));
   };
 
   const handleTogglePin = async (id: string) => {
-    await callTauri("toggle_pin_item", { id });
+    try {
+      await callTauri("toggle_pin_item", { id });
+    } catch (err) {
+      console.error("Failed to toggle pin on backend:", err);
+    }
     setClipboardList(prev => prev.map(c => c.id === id ? { ...c, is_pinned: !c.is_pinned } : c));
   };
 
   const handleUnpair = async (id: string) => {
-    await callTauri("delete_paired_device", { device_id: id });
+    try {
+      await callTauri("delete_paired_device", { device_id: id });
+    } catch (err) {
+      console.error("Failed to unpair device on backend:", err);
+    }
     setPairedDevices(prev => prev.filter(d => d.id !== id));
   };
 
