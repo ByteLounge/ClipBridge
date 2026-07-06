@@ -86,6 +86,7 @@ export default function App() {
   // Input fields
   const [manualText, setManualText] = useState('');
   const [searchVal, setSearchVal] = useState('');
+  const [manualPairInput, setManualPairInput] = useState('');
   
   // Local clipboard monitoring state
   const lastLocalClipboard = useRef('');
@@ -368,6 +369,15 @@ export default function App() {
     }
   };
 
+  const handleManualPairSubmit = async () => {
+    if (!manualPairInput.trim()) {
+      Alert.alert('Error', 'Please enter a valid pairing string.');
+      return;
+    }
+    await handleQRScanned(manualPairInput.trim());
+    setManualPairInput('');
+  };
+
   const handleManualSend = () => {
     if (manualText.trim().length === 0) return;
     broadcastClipboard(manualText);
@@ -469,6 +479,22 @@ export default function App() {
                 <TouchableOpacity onPress={() => setShowScanner(true)} style={styles.btnPrimary}>
                   <QrCode color="#fff" size={18} />
                   <Text style={styles.btnPrimaryText}>Scan QR Code</Text>
+                </TouchableOpacity>
+
+                <View style={styles.settingDivider} />
+
+                <Text style={[styles.cardLabel, { marginBottom: 8 }]}>OR PAIR MANUALLY</Text>
+                <TextInput
+                  value={manualPairInput}
+                  onChangeText={setManualPairInput}
+                  placeholder="Paste cbpair: string from Desktop..."
+                  placeholderTextColor="#64748b"
+                  style={[styles.input, { marginBottom: 12 }]}
+                  multiline
+                />
+                <TouchableOpacity onPress={handleManualPairSubmit} style={styles.btnSecondary}>
+                  <Wifi color="#fff" size={16} />
+                  <Text style={styles.btnSecondaryText}>Connect & Pair</Text>
                 </TouchableOpacity>
               </BlurView>
             )}
