@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for ClipBridge",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:default",
+    "allow-get-device-id",
+    "allow-generate-pairing-qr",
+    "allow-get-paired-devices",
+    "allow-delete-paired-device",
+    "allow-get-clipboard-history",
+    "allow-set-clipboard",
+    "allow-delete-clipboard-item",
+    "allow-toggle-pin-item",
+    "allow-get-network-status"
+  ]
+}

@@ -26,6 +26,7 @@ const callTauri = async (cmd: string, args: any = {}): Promise<any> => {
     const { invoke } = await import("@tauri-apps/api/core");
     return await invoke(cmd, args);
   } catch (err) {
+    console.warn(`Tauri invoke failed for ${cmd}, falling back to mock:`, err);
     return mockTauriResponse(cmd, args);
   }
 };
