@@ -20,9 +20,11 @@ import {
   QrCode
 } from "lucide-react";
 
-// Fallback check to avoid crash if running in browser
 const isTauri = () => {
-  return typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined;
+  return typeof window !== "undefined" && (
+    (window as any).__TAURI_INTERNALS__ !== undefined ||
+    (window as any).__TAURI_IPC__ !== undefined
+  );
 };
 
 // Lazy-loaded tauri invoke helper
