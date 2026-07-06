@@ -175,7 +175,7 @@ export default function App() {
           challenge: 'clipbridge-auth-challenge',
         };
         const ptStr = JSON.stringify(handshakePayload);
-        const { ciphertext, tag } = encryptPayload(syncKey, ptStr, nonce);
+        const { ciphertext, tag } = await encryptPayload(syncKey, ptStr, nonce);
 
         const handshakeReq = {
           device_id: deviceId,
@@ -197,7 +197,7 @@ export default function App() {
           const fullCtHex = env.ciphertext;
           const tagHex = env.tag;
 
-          const decrypted = decryptPayload(syncKey, fullCtHex, nonceBytes, tagHex);
+          const decrypted = await decryptPayload(syncKey, fullCtHex, nonceBytes, tagHex);
           const payload = JSON.parse(decrypted);
 
           // Loop Prevention
@@ -258,7 +258,7 @@ export default function App() {
       };
 
       const nonce = generateNonce();
-      const { ciphertext, tag } = encryptPayload(syncKey, JSON.stringify(payload), nonce);
+      const { ciphertext, tag } = await encryptPayload(syncKey, JSON.stringify(payload), nonce);
 
       const envelope = {
         sender_id: deviceId,

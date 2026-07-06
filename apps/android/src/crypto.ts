@@ -1,5 +1,5 @@
 import { x25519 } from '@noble/curves/ed25519';
-import { gcm } from '@noble/ciphers/aes';
+import { aes_256_gcm } from '@noble/ciphers/webcrypto/aes';
 import * as Crypto from 'expo-crypto';
 import { Buffer } from 'buffer';
 
@@ -88,20 +88,18 @@ export function generateNonce(): Uint8Array {
 
 /**
  * Encrypts payload using AES-256-GCM.
- * Returns { ciphertext: hex, tag: hex }
+ * Returns Promise<{ ciphertext: string, tag: string }>
  */
-export function encryptPayload(
+export async function encryptPayload(
   key: Uint8Array,
   plaintext: string,
   nonce: Uint8Array
-): { ciphertext: string; tag: string } {
+): Promise<{ ciphertext: string; tag: string }> {
   const ptBytes = new TextEncoder().encode(plaintext);
-  const aesGcm = gcm(key, nonce);
+  const cipher = aes_256_gcm(key, nonce);
+  const encrypted = await cipher.encrypt(ptBytes);
   
-  const encrypted = aesGcm.encrypt(ptBytes);
-  
-  // noble-ciphers AES-GCM output is [ciphertext + tag]
-  // Tag size is 16 bytes
+  // Appended tag size is 16 bytes
   const tagSize = 16;
   const ciphertextBytes = encrypted.subarray(0, encrypted.length - tagSize);
   const tagBytes = encrypted.subarray(encrypted.length - tagSize);
@@ -116,12 +114,12 @@ export function encryptPayload(
  * Decrypts payload using AES-256-GCM.
  * Returns decrypted plaintext string.
  */
-export function decryptPayload(
+export async function decryptPayload(
   key: Uint8Array,
   ciphertextHex: string,
   nonce: Uint8Array,
   tagHex: string
-): string {
+): Promise<string> {
   const ciphertext = hexToBytes(ciphertextHex);
   const tag = hexToBytes(tagHex);
 
@@ -129,8 +127,8 @@ export function decryptPayload(
   encrypted.set(ciphertext, 0);
   encrypted.set(tag, ciphertext.length);
 
-  const aesGcm = gcm(key, nonce);
-  const decryptedBytes = aesGcm.decrypt(encrypted);
+  const cipher = aes_256_gcm(key, nonce);
+  const decryptedBytes = await cipher.decrypt(encrypted);
 
   return new TextDecoder().decode(decryptedBytes);
 }
