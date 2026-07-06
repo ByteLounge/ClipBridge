@@ -20,21 +20,14 @@ import {
   QrCode
 } from "lucide-react";
 
-const isTauri = () => {
-  return typeof window !== "undefined" && (
-    (window as any).__TAURI_INTERNALS__ !== undefined ||
-    (window as any).__TAURI_IPC__ !== undefined
-  );
-};
-
-// Lazy-loaded tauri invoke helper
+// Lazy-loaded tauri invoke helper with automatic browser fallback
 const callTauri = async (cmd: string, args: any = {}): Promise<any> => {
-  if (isTauri()) {
+  try {
     const { invoke } = await import("@tauri-apps/api/core");
-    return invoke(cmd, args);
+    return await invoke(cmd, args);
+  } catch (err) {
+    return mockTauriResponse(cmd, args);
   }
-  // Browser preview mode stub responses
-  return mockTauriResponse(cmd, args);
 };
 
 // Mock data generator for browser sandbox
