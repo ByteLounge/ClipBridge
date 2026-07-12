@@ -252,35 +252,126 @@ ClipBridge/
 
 ---
 
+## 💾 Downloads
+
+Official release binaries are published under the [GitHub Releases](https://github.com/ByteLounge/ClipBridge/releases) tab. The following artifacts are generated for every stable tag release:
+
+*   **Windows**:
+    *   `ClipBridge_1.0.0_x64_en-US.msi` (Standard NSIS/MSI installer)
+    *   `ClipBridge_1.0.0_x64_portable.exe` (Standalone portable executable)
+*   **Linux**:
+    *   `ClipBridge-1.0.0.AppImage` (Universal Linux package)
+    *   `clipbridge_1.0.0_amd64.deb` (Debian/Ubuntu native package)
+*   **macOS**:
+    *   `ClipBridge_1.0.0_x64.dmg` (Intel compilation DMG bundle)
+    *   `ClipBridge_1.0.0_aarch64.dmg` (Apple Silicon M-series DMG bundle)
+*   **Android**:
+    *   `clipbridge-release.apk` (Optimized standalone APK)
+    *   `clipbridge-release.aab` (Google Play Store Android App Bundle)
+*   **iOS**:
+    *   Future iOS bundle package availability. (Currently compile from source)
+
+---
+
 ## 📦 Installation
 
-To build and run ClipBridge, make sure your local system matches the build prerequisites.
+### 🖥️ Desktop
 
-### Desktop Requirements
-- **Rust**: Rustup stable compiler (v1.75+)
-- **Node.js**: LTS Release (v18.x or v20.x)
-- **C++ Compiler**: Build tools corresponding to your operating system.
+#### Windows
+1. Download the `ClipBridge_1.0.0_x64_en-US.msi` installer or the portable `ClipBridge_1.0.0_x64_portable.exe`.
+2. Double-click the installer and follow the setup wizard prompts.
+3. Launch **ClipBridge** from the start menu or desktop shortcut.
 
-### Mobile Requirements
-- **Expo Go** application installed on a physical phone, or an Android/iOS emulator configured.
+#### Linux
+*   **AppImage**:
+    ```bash
+    chmod +x ClipBridge-1.0.0.AppImage
+    ./ClipBridge-1.0.0.AppImage
+    ```
+*   **Debian/Ubuntu Package**:
+    ```bash
+    sudo dpkg -i clipbridge_1.0.0_amd64.deb
+    ```
 
-### Desktop Command Line Setup
+#### macOS
+1. Download the appropriate `.dmg` volume.
+2. Open the `.dmg` container and drag the **ClipBridge** application bundle into your `/Applications` directory.
+3. Open **ClipBridge** via Spotlight or Launchpad.
+
+---
+
+### 📱 Mobile
+
+#### Android
+- **Standard APK**: Download `clipbridge-release.apk` directly on your Android phone, enable "Install Unknown Apps" in your browser settings, and open the file to install.
+- **Expo Go (Testing)**: Scan the development barcode inside your Expo Go client application.
+
+#### iOS
+- Currently requires compilation from source using Xcode, or deployment via TestFlight (coming soon).
+
+---
+
+## 🛠️ Building From Source
+
+Follow these instructions to compile stable development and release builds.
+
+### 🖥️ Desktop (Tauri + Vite + Rust)
+
+Verify your system has [Node.js](https://nodejs.org/) (v18+) and [Rustup](https://rustup.rs/) installed.
+
 ```bash
-# Clone the repository
-git clone https://github.com/ByteLounge/ClipBridge.git
-cd ClipBridge/apps/desktop
+# Navigate to the desktop directory
+cd apps/desktop
 
 # Install packages
 npm install
+
+# Run the live hot-reload development workspace
+npm run tauri dev
+
+# Compile optimized production binaries
+npm run tauri build
 ```
 
-### Android/Mobile Setup
+### 📱 Android (Expo + React Native)
+
+Ensure you have the Android SDK configure variables loaded (`ANDROID_HOME`).
+
 ```bash
-cd ../android
+# Navigate to the android directory
+cd apps/android
+
+# Install dependencies
 npm install
+
+# Execute native android prebuild configurations
+npx expo prebuild --platform android
+
+# Run debug build on your physical test device/emulator
+npx expo run:android
+
+# Build production Release APK
+cd android && ./gradlew assembleRelease
+
+# Build production Release AAB bundle
+./gradlew bundleRelease
 ```
 
-Detailed installation steps, library requirements, and OS dependencies can be reviewed in the **[Development Guide](file:///D:/Projects/ClipBridge/docs/DEVELOPMENT.md)**.
+### 🍎 iOS (Expo + Xcode)
+
+Requires a macOS computer with Xcode installed.
+
+```bash
+# Navigate to the mobile directory
+cd apps/android
+
+# Run debug build on iOS simulator
+npx expo run:ios
+
+# Archive release build via Xcode
+npx expo prebuild --platform ios
+# Open the generated ios folder in Xcode, select Product > Archive to compile the .ipa
+```
 
 ---
 

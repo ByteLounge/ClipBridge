@@ -1,7 +1,7 @@
 {
   "productName": "ClipBridge",
   "version": "1.0.0",
-  "identifier": "com.clipbridge.app",
+  "identifier": "com.clipbridge.sync",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -32,6 +32,19 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "ByteLounge",
+    "copyright": "Copyright © 2026 ClipBridge Contributors",
+    "shortDescription": "Copy Anywhere. Paste Everywhere.",
+    "longDescription": "ClipBridge is a secure, cross-platform clipboard synchronization application that instantly syncs clipboard content between Android and desktop devices over a local network."
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "pubkey": "UPDATE_SIGNING_PUBKEY_PLACEHOLDER",
+      "endpoints": [
+        "https://releases.clipbridge.org/update/{{target}}/{{current_version}}"
+      ]
+    }
   }
 }

@@ -4,16 +4,33 @@
     "slug": "clipbridge",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
     "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0c0d14"
+    },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.clipbridge.app"
+      "bundleIdentifier": "com.clipbridge.sync",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Allow ClipBridge to access camera to scan pairing QR codes."
+      }
     },
     "android": {
-      "package": "com.clipbridge.app",
+      "package": "com.clipbridge.sync",
+      "versionCode": 1,
       "permissions": [
-        "CAMERA"
-      ]
+        "CAMERA",
+        "RECEIVE_BOOT_COMPLETED",
+        "FOREGROUND_SERVICE"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+        "backgroundColor": "#0c0d14"
+      }
     },
     "plugins": [
       [
