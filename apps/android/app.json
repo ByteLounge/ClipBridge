@@ -4,10 +4,10 @@
     "slug": "clipbridge",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+    "icon": "./app/src/main/res/mipmap/ic_launcher.png",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "image": "./app/src/main/res/mipmap/ic_launcher.png",
       "resizeMode": "contain",
       "backgroundColor": "#0c0d14"
     },
@@ -28,7 +28,7 @@
         "FOREGROUND_SERVICE"
       ],
       "adaptiveIcon": {
-        "foregroundImage": "./app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+        "foregroundImage": "./app/src/main/res/mipmap/ic_launcher.png",
         "backgroundColor": "#0c0d14"
       }
     },
