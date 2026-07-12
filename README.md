@@ -111,7 +111,7 @@ ClipBridge is packed with modern features designed for the ultimate developer an
 ## 🎥 Demo
 
 <p align="center">
-  <img src="assets/demo.gif" alt="ClipBridge Live Demo" width="80%" style="border-radius: 8px;" />
+  <img src="assets/demo.png" alt="ClipBridge Live Demo" width="80%" style="border-radius: 8px;" />
 </p>
 
 ---
@@ -139,21 +139,21 @@ ClipBridge separates responsibilities into a host-client model optimized for low
 
 ```mermaid
 graph TD
-    subgraph Desktop (Host)
-        UI[React/Vite Webview] <-->|Tauri Commands| Rust[Rust Core]
-        Rust <--> DB[(history.json / pairing.json)]
-        Rust -->|mDNS Advertisements| MDNS[mDNS Daemon]
-        Rust <--> WS[Axum Socket Server]
+    subgraph Desktop ["Desktop (Host)"]
+        UI["React/Vite Webview"] <-->|Tauri Commands| Rust["Rust Core"]
+        Rust <--> DB[("history.json / pairing.json")]
+        Rust -->|mDNS Advertisements| MDNS["mDNS Daemon"]
+        Rust <--> WS["Axum Socket Server"]
     end
 
-    subgraph Mobile (Client)
-        RN[React Native UI] <--> App[Expo Sync Loop]
-        App <--> SecureStore[(Android Keystore / SecureStore)]
+    subgraph Mobile ["Mobile (Client)"]
+        RN["React Native UI"] <--> App["Expo Sync Loop"]
+        App <--> SecureStore[("Android Keystore / SecureStore")]
         App -->|NSD Discovery| MDNS
-        App <--> WSClient[WebSocket Connection]
+        App <--> WSClient["WebSocket Connection"]
     end
 
-    WS <--->|Encrypted TCP| WSClient
+    WS <-->|Encrypted TCP| WSClient
 ```
 
 - **Desktop Host**: Written in Rust, running a lightweight Axum HTTP server that upgrades paired devices to persistent WebSocket sessions. Clipboard hooks capture local events via `arboard`.

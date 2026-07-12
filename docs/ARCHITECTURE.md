@@ -39,20 +39,20 @@ The desktop application is built as a hybrid Rust/Web application using Tauri v2
 
 ```mermaid
 graph TD
-    subgraph Frontend (React + TypeScript + Vite)
-        UI[Liquid Glass Web UI] <--> TS[API Client / Tauri Invoker]
+    subgraph Frontend ["Frontend (React + TypeScript + Vite)"]
+        UI["Liquid Glass Web UI"] <--> TS["API Client / Tauri Invoker"]
     end
     
-    subgraph Backend (Rust Core)
-        TMain[Tauri Command Router] <--> TS
-        NS[Axum Web Server] <--> DB[(Pairing DB / SQLite)]
+    subgraph Backend ["Backend (Rust Core)"]
+        TMain["Tauri Command Router"] <--> TS
+        NS["Axum Web Server"] <--> DB[("Pairing DB / SQLite")]
         TMain <--> DB
         
-        CM[Clipboard Monitor] -->|Broadcast Event| TMain
+        CM["Clipboard Monitor"] -->|Broadcast Event| TMain
         CM -->|Publish Broadcast| NS
     end
     
-    NS <--->|WebSocket / TCP| Mobile[Android / Mobile Peer]
+    NS <-->|"WebSocket / TCP"| Mobile["Android / Mobile Peer"]
 ```
 
 - **Tauri WebView Interface**: Rendered via WebKit/WebView2. Built using React and Vite, featuring an Apple-inspired Liquid Glass UI. Communication with the Rust backend occurs over Tauri commands (`invoke`).
@@ -65,21 +65,21 @@ The mobile client is written in TypeScript and executed by the Hermes engine.
 
 ```mermaid
 graph TD
-    subgraph UI Layer
-        MUI[React Native Screens] <--> Context[App State Context]
+    subgraph UI_Layer ["UI Layer"]
+        MUI["React Native Screens"] <--> Context["App State Context"]
     end
 
-    subgraph Service Layer
-        WS[WebSocket Manager] <--> Context
-        CB[Clipboard Listener] -->|Change Detected| WS
+    subgraph Service_Layer ["Service Layer"]
+        WS["WebSocket Manager"] <--> Context
+        CB["Clipboard Listener"] -->|Change Detected| WS
     end
 
-    subgraph Storage Layer
-        WS <--> SS[expo-secure-store]
-        WS <--> AS[AsyncStorage]
+    subgraph Storage_Layer ["Storage Layer"]
+        WS <--> SS["expo-secure-store"]
+        WS <--> AS["AsyncStorage"]
     end
 
-    WS <--->|Encrypted Payloads| Server[Tauri Desktop Server]
+    WS <-->|"Encrypted Payloads"| Server["Tauri Desktop Server"]
 ```
 
 - **WebSocket Connection Manager**: Manages sockets with exponential backoff. It automatically suspends heartbeats and reconnect attempts when the app goes into the background, preserving battery.
@@ -94,18 +94,18 @@ No plaintext data is ever sent across the local network.
 
 ```mermaid
 flowchart TD
-    subgraph Pairing Phase (Out-of-Band)
-        DesktopID[Desktop ID] & DesktopPK[Desktop Public Key] --> QR[QR Code]
-        QR -->|Scan QR| PhoneScan[Android App]
-        PhoneScan -->|Generate Ephemeral Key| KeyAgreement[Diffie-Hellman Exchange]
+    subgraph PairingPhase ["Pairing Phase (Out-of-Band)"]
+        DesktopID["Desktop ID"] & DesktopPK["Desktop Public Key"] --> QR["QR Code"]
+        QR -->|Scan QR| PhoneScan["Android App"]
+        PhoneScan -->|Generate Ephemeral Key| KeyAgreement["Diffie-Hellman Exchange"]
     end
     
-    subgraph Encryption System (AES-256-GCM)
-        SharedSecret[X25519 Shared Secret] --> HKDF[HKDF-SHA256 Key Derivation]
-        HKDF -->|Derive| KSync[Symmetric Key K_sync]
-        PlaintextText[Plaintext Clipboard] & MonotonicNonce[Monotonic Nonce] --> AES[AES-256-GCM Encrypter]
+    subgraph EncryptionSystem ["Encryption System (AES-256-GCM)"]
+        SharedSecret["X25519 Shared Secret"] --> HKDF["HKDF-SHA256 Key Derivation"]
+        HKDF -->|Derive| KSync["Symmetric Key K_sync"]
+        PlaintextText["Plaintext Clipboard"] & MonotonicNonce["Monotonic Nonce"] --> AES["AES-256-GCM Encrypter"]
         KSync --> AES
-        AES -->|Encrypted Envelope| WebSocket[WebSocket Packet]
+        AES -->|"Encrypted Envelope"| WebSocket["WebSocket Packet"]
     end
 ```
 
