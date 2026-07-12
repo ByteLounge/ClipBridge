@@ -53,6 +53,20 @@ if (typeof global.Buffer === 'undefined') {
   global.Buffer = Buffer;
 }
 
+// Global hook to trace malformed decodeURIComponent calls
+const origDecodeURIComponent = global.decodeURIComponent;
+(global as any).decodeURIComponent = function (str: string) {
+  try {
+    return origDecodeURIComponent(str);
+  } catch (e: any) {
+    if (e instanceof URIError) {
+      console.error('[Diagnostic Polyfill] decodeURIComponent failed on string:', JSON.stringify(str));
+      console.error(e.stack);
+    }
+    throw e;
+  }
+};
+
 // Polyfill global crypto and getRandomValues
 if (typeof global.crypto === 'undefined') {
   global.crypto = {} as any;

@@ -390,6 +390,7 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
                 "code": "UNPAIRED",
                 "message": "This device is not paired with the desktop."
             }).to_string())).await;
+            let _ = ws_sender.close().await;
             return;
         }
     };
@@ -433,6 +434,7 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
                 "code": "DECRYPTION_FAILED",
                 "message": "Authentication handshake decryption failed."
             }).to_string())).await;
+            let _ = ws_sender.close().await;
             return;
         }
     };

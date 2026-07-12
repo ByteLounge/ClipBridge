@@ -51,8 +51,8 @@ function hmacSha256(key: Uint8Array, data: Uint8Array): Uint8Array {
   const dataBytes = bytesToBinary(data);
 
   const hmac = forge.hmac.create();
-  hmac.start('sha256', forge.util.createBuffer(keyBytes));
-  hmac.update(forge.util.createBuffer(dataBytes));
+  hmac.start('sha256', keyBytes);
+  hmac.update(dataBytes);
   const digest = hmac.digest();
   return binaryToBytes(digest.getBytes());
 }
@@ -157,5 +157,6 @@ export async function decryptPayload(
     throw new Error('AES-GCM Decryption Integrity Verification Failed');
   }
 
-  return decipher.output.toString();
+  const decBytes = binaryToBytes(decipher.output.getBytes());
+  return new TextDecoder().decode(decBytes);
 }
