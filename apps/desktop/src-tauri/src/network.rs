@@ -159,7 +159,6 @@ pub fn start_webserver(port: u16, mut clip_rx: broadcast::Receiver<ClipboardUpda
     let app = Router::new()
         .route("/pair", get(pair_handler))
         .route("/ws", get(ws_handler))
-        .route("/test/qr", get(test_qr_handler))
         .with_state(STATE.clone());
 
     // Listen loop
@@ -240,35 +239,6 @@ async fn pair_handler(
     State(state): State<Arc<Mutex<ServerState>>>,
 ) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_pair_ws(socket, state))
-}
-
-async fn test_qr_handler(
-    State(state): State<Arc<Mutex<ServerState>>>,
-) -> impl IntoResponse {
-    let (device_id, display_name, pub_key) = {
-        let mut guard = state.lock().unwrap();
-        if guard.ephemeral_pairing_key.is_none() {
-            let (priv_key, pub_key) = crate::crypto::generate_keypair();
-            guard.ephemeral_pairing_key = Some(priv_key);
-            guard.ephemeral_public_key = Some(pub_key.clone());
-        }
-        (
-            guard.device_id.clone(),
-            guard.display_name.clone(),
-            guard.ephemeral_public_key.clone().unwrap_or_default()
-        )
-    };
-    let my_ip = local_ip_address::local_ip()
-        .map(|ip| ip.to_string())
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    
-    axum::Json(serde_json::json!({
-        "device_id": device_id,
-        "public_key": hex::encode(pub_key),
-        "name": display_name,
-        "ip": my_ip,
-        "port": 54670
-    }))
 }
 
 async fn handle_pair_ws(mut socket: WebSocket, state: Arc<Mutex<ServerState>>) {
@@ -415,7 +385,12 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
         Some(d) => d,
         None => {
             println!("[ClipBridge Connect] Handshake failed: Device {} is not paired.", hr.device_id);
-            return; // Device not paired
+            let _ = ws_sender.send(Message::Text(serde_json::json!({
+                "type": "ERROR",
+                "code": "UNPAIRED",
+                "message": "This device is not paired with the desktop."
+            }).to_string())).await;
+            return;
         }
     };
 
@@ -442,10 +417,22 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
 
     let (ct, tag) = encrypted_bytes.split_at(encrypted_bytes.len() - 16);
 
-    let decrypted = match decrypt_aes_gcm(&device.key, ct, &nonce_bytes, tag) {
-        Ok(p) => p,
+    let decrypted_opt = match decrypt_aes_gcm(&device.key, ct, &nonce_bytes, tag) {
+        Ok(p) => Some(p),
         Err(e) => {
             println!("[ClipBridge Connect] Handshake failed: Decryption error for device {}. Error: {:?}", hr.device_id, e);
+            None
+        }
+    };
+
+    let decrypted = match decrypted_opt {
+        Some(p) => p,
+        None => {
+            let _ = ws_sender.send(Message::Text(serde_json::json!({
+                "type": "ERROR",
+                "code": "DECRYPTION_FAILED",
+                "message": "Authentication handshake decryption failed."
+            }).to_string())).await;
             return;
         }
     };
@@ -481,122 +468,127 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
 
     println!("[ClipBridge Connect] Secure client session established for device: {} (ID: {})", device.name, peer_id);
 
-    // Spawn a writer task to pipe updates to this client
-    let peer_id_clone = peer_id.clone();
-    let state_clone = state.clone();
-    tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
-            if msg == "UNPAIR" {
-                println!("[ClipBridge Connection] UNPAIR signal received. Tearing down writer task for: {}", peer_id_clone);
-                break;
-            }
-            if ws_sender.send(Message::Text(msg)).await.is_err() {
-                break; // Connection closed
-            }
-        }
-        // Cleanup on drop
-        let mut guard = state_clone.lock().unwrap();
-        guard.active_txs.remove(&peer_id_clone);
-        println!("[ClipBridge Connection] Writer task cleaned up for client: {}", peer_id_clone);
-    });
-
-    // Reader task (listen for updates from this client)
     let my_device_id = {
         let guard = state.lock().unwrap();
         guard.device_id.clone()
     };
 
-    while let Some(res) = ws_receiver.next().await {
-        let msg = match res {
-            Ok(m) => m,
-            Err(e) => {
-                println!("[ClipBridge Connection] Read error occurred for client {}: {:?}", peer_id, e);
-                break;
-            }
-        };
-
-        if let Message::Text(text) = msg {
-            // Heartbeat check
-            if text == "PING" {
-                println!("[ClipBridge Heartbeat] Received PING from device {}. Returning PONG.", peer_id);
-                let tx_opt = {
-                    let guard = state.lock().unwrap();
-                    guard.active_txs.get(&peer_id).cloned()
-                };
-                if let Some(active_tx) = tx_opt {
-                    let _ = active_tx.send("PONG".to_string());
-                }
-                continue;
-            }
-
-            if let Ok(env) = serde_json::from_str::<SyncEnvelope>(&text) {
-                // 1. Verify sender ID is matching this session device
-                if env.sender_id != peer_id {
-                    println!("[ClipBridge Sync] Warning: Envelope sender ID mismatch (got {}, expected {})", env.sender_id, peer_id);
-                    continue;
-                }
-
-                // 2. Decode packet parameters
-                let nonce_bytes = match hex::decode(&env.nonce) {
-                    Ok(n) if n.len() == 12 => {
-                        let mut arr = [0u8; 12];
-                        arr.copy_from_slice(&n);
-                        arr
+    // Single loop tokio::select! processor
+    loop {
+        tokio::select! {
+            // Receive from WebSocket
+            res = ws_receiver.next() => {
+                let msg = match res {
+                    Some(Ok(m)) => m,
+                    Some(Err(e)) => {
+                        println!("[ClipBridge Connection] Read error occurred for client {}: {:?}", peer_id, e);
+                        break;
                     }
-                    _ => continue,
+                    None => {
+                        println!("[ClipBridge Connection] Client {} disconnected.", peer_id);
+                        break;
+                    }
                 };
 
-                let ct = match hex::decode(&env.ciphertext) {
-                    Ok(c) => c,
-                    _ => continue,
-                };
-
-                let tag = match hex::decode(&env.tag) {
-                    Ok(t) if t.len() == 16 => t,
-                    _ => continue,
-                };
-
-                // 3. Decrypt and check integrity
-                if let Ok(dec_bytes) = decrypt_aes_gcm(&device.key, &ct, &nonce_bytes, &tag) {
-                    if let Ok(payload) = serde_json::from_slice::<DecryptedSyncPayload>(&dec_bytes) {
-                        
-                        // Dynamic unpairing check
-                        let is_still_paired = {
-                            let guard = state.lock().unwrap();
-                            guard.paired_devices.contains_key(&peer_id)
-                        };
-                        if !is_still_paired {
-                            println!("[ClipBridge Connection] Device {} is no longer paired. Terminating session.", peer_id);
+                if let Message::Text(text) = msg {
+                    // Heartbeat check
+                    if text == "PING" {
+                        println!("[ClipBridge Heartbeat] Received PING from device {}. Returning PONG.", peer_id);
+                        if ws_sender.send(Message::Text("PONG".to_string())).await.is_err() {
                             break;
                         }
+                        continue;
+                    }
 
-                        // 4. Validate payload & loop prevention
-                        if payload.origin_device_id == my_device_id {
-                            continue; // Reflected loop packet
+                    if let Ok(env) = serde_json::from_str::<SyncEnvelope>(&text) {
+                        // 1. Verify sender ID is matching this session device
+                        if env.sender_id != peer_id {
+                            println!("[ClipBridge Sync] Warning: Envelope sender ID mismatch (got {}, expected {})", env.sender_id, peer_id);
+                            continue;
                         }
 
-                        println!("[ClipBridge Sync] Successfully received and decrypted clipboard payload from device: {}", device.name);
+                        // 2. Decode packet parameters
+                        let nonce_bytes = match hex::decode(&env.nonce) {
+                            Ok(n) if n.len() == 12 => {
+                                let mut arr = [0u8; 12];
+                                arr.copy_from_slice(&n);
+                                arr
+                            }
+                            _ => continue,
+                        };
 
-                        // Write to local OS clipboard
-                        let _ = clipboard::write_clipboard_text(&payload.content, &payload.clip_id);
+                        let ct = match hex::decode(&env.ciphertext) {
+                            Ok(c) => c,
+                            _ => continue,
+                        };
 
-                        // Save in local history log
-                        add_history_item(ClipboardItem {
-                            id: payload.clip_id.clone(),
-                            timestamp: payload.timestamp,
-                            data_type: payload.data_type.clone(),
-                            content: payload.content.clone(),
-                            origin_device_name: device.name.clone(),
-                            is_pinned: false,
-                        });
+                        let tag = match hex::decode(&env.tag) {
+                            Ok(t) if t.len() == 16 => t,
+                            _ => continue,
+                        };
+
+                        // 3. Decrypt and check integrity
+                        if let Ok(dec_bytes) = decrypt_aes_gcm(&device.key, &ct, &nonce_bytes, &tag) {
+                            if let Ok(payload) = serde_json::from_slice::<DecryptedSyncPayload>(&dec_bytes) {
+                                
+                                // Dynamic unpairing check
+                                let is_still_paired = {
+                                    let guard = state.lock().unwrap();
+                                    guard.paired_devices.contains_key(&peer_id)
+                                };
+                                if !is_still_paired {
+                                    println!("[ClipBridge Connection] Device {} is no longer paired. Terminating session.", peer_id);
+                                    break;
+                                }
+
+                                // 4. Validate payload & loop prevention
+                                if payload.origin_device_id == my_device_id {
+                                    continue; // Reflected loop packet
+                                }
+
+                                println!("[ClipBridge Sync] Successfully received and decrypted clipboard payload from device: {}", device.name);
+
+                                // Write to local OS clipboard
+                                let _ = clipboard::write_clipboard_text(&payload.content, &payload.clip_id);
+
+                                // Save in local history log
+                                add_history_item(ClipboardItem {
+                                    id: payload.clip_id.clone(),
+                                    timestamp: payload.timestamp,
+                                    data_type: payload.data_type.clone(),
+                                    content: payload.content.clone(),
+                                    origin_device_name: device.name.clone(),
+                                    is_pinned: false,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Receive from broadcast channel (updates from desktop to send to client)
+            res = rx.recv() => {
+                match res {
+                    Ok(msg) => {
+                        if msg == "UNPAIR" {
+                            println!("[ClipBridge Connection] UNPAIR signal received. Tearing down connection for: {}", peer_id);
+                            break;
+                        }
+                        if ws_sender.send(Message::Text(msg)).await.is_err() {
+                            break; // Connection closed
+                        }
+                    }
+                    Err(_) => {
+                        println!("[ClipBridge Connection] Broadcast channel closed for client: {}", peer_id);
+                        break;
                     }
                 }
             }
         }
     }
 
-    // Cleanup when reader exits
-    println!("[ClipBridge Connection] Reader task exiting for client: {}", peer_id);
+    // Cleanup when session exits
+    println!("[ClipBridge Connection] Session cleaned up for client: {}", peer_id);
     let mut guard = state.lock().unwrap();
     guard.active_txs.remove(&peer_id);
 }
