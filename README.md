@@ -562,7 +562,7 @@ Distributed under the MIT License. See the **[LICENSE](file:///D:/Projects/ClipB
 ## 📈 Star History
 
 <p align="center">
-  <img src="https://api.star-history.com/svg?repos=ByteLounge/ClipBridge&type=Date" alt="Star History Graph" width="80%" />
+  <img src="assets/star_history.png" alt="Star History Graph" width="80%" />
 </p>
 
 ---
