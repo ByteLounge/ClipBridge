@@ -64,19 +64,27 @@ export async function deriveSharedKey(
   privateKey: Uint8Array,
   peerPublicKey: Uint8Array
 ): Promise<Uint8Array> {
+  console.log('[deriveSharedKey] Calling x25519.getSharedSecret...');
   const sharedSecret = x25519.getSharedSecret(privateKey, peerPublicKey);
+  console.log('[deriveSharedKey] sharedSecret computed successfully. Length:', sharedSecret.length);
   
   // 1. Extract: PRK = HMAC-SHA256(Salt=zeros(32), IKM=sharedSecret)
+  console.log('[deriveSharedKey] Computing PRK using hmacSha256...');
   const salt = new Uint8Array(32);
   const prk = hmacSha256(salt, sharedSecret);
+  console.log('[deriveSharedKey] PRK computed successfully. Length:', prk.length);
   
   // 2. Expand: K_sync = HMAC-SHA256(PRK, info + 0x01)
+  console.log('[deriveSharedKey] Encoding info string with TextEncoder...');
   const info = new TextEncoder().encode('clipbridge-sync-key');
+  console.log('[deriveSharedKey] Info encoded. Length:', info.length);
   const infoWithCounter = new Uint8Array(info.length + 1);
   infoWithCounter.set(info, 0);
   infoWithCounter[info.length] = 1; // Block counter 1
   
+  console.log('[deriveSharedKey] Computing K_sync using hmacSha256...');
   const kSync = hmacSha256(prk, infoWithCounter);
+  console.log('[deriveSharedKey] K_sync computed successfully. Length:', kSync.length);
   return kSync;
 }
 

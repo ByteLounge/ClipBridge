@@ -451,9 +451,12 @@ export default function App() {
     setShowScanner(false);
     setPairingLoading(true);
 
+    console.log('[ClipBridge Pair] ✓ QR payload received:', data);
+
     // Expected format: cbpair:<desktop_id>:<desktop_public_key_hex>:<desktop_name>:<ip_address>:<port>
     const parts = data.split(':');
     if (parts.length < 4 || parts[0] !== 'cbpair') {
+      console.error('[ClipBridge Pair] Failed QR parsing - Invalid QR schema. Received:', data);
       Alert.alert('Error', 'Invalid QR code schema.');
       setPairingLoading(false);
       isPairingRef.current = false;
@@ -468,7 +471,7 @@ export default function App() {
     const port = parts[5] || '54670';
 
     const url = `ws://${ipAddress}:${port}/pair`;
-    console.log(`[ClipBridge Pair] Attempting pairing connection to: ${url}`);
+    console.log(`[ClipBridge Pair] ✓ WebSocket connecting to: ${url}`);
 
     try {
       const { privateKey, publicKey } = generateX25519KeyPair();
@@ -476,29 +479,37 @@ export default function App() {
 
       const pairingTimeout = setTimeout(() => {
         if (ws.readyState !== WebSocket.OPEN) {
-          console.warn('[ClipBridge Pair] Pairing connection timed out.');
+          console.warn('[ClipBridge Pair] Pairing connection timed out. ReadyState:', ws.readyState);
           ws.close();
         }
       }, 10000);
 
       ws.onopen = () => {
         clearTimeout(pairingTimeout);
-        console.log('[ClipBridge Pair] Socket opened, sending PAIR_REQUEST...');
+        console.log('[ClipBridge Pair] ✓ WebSocket connected');
+        console.log('[ClipBridge Pair] Sending PAIR_REQUEST...');
         const pairReq = {
           device_id: deviceId,
           display_name: displayName,
           client_public_key: bytesToHex(publicKey),
         };
+        console.log('[ClipBridge Pair] Raw request sent:', JSON.stringify(pairReq));
         ws.send(JSON.stringify(pairReq));
       };
 
       ws.onmessage = async (e) => {
         try {
+          console.log('[ClipBridge Pair] Raw server response payload received:', e.data);
           const resp = JSON.parse(e.data);
-          const serverPubBytes = hexToBytes(resp.server_public_key);
+          console.log('[ClipBridge Pair] ✓ Handshake parsed successfully:', JSON.stringify(resp));
           
-          // Derive shared sync key
+          console.log('[ClipBridge Pair] Decoding server public key...');
+          const serverPubBytes = hexToBytes(resp.server_public_key);
+          console.log('[ClipBridge Pair] Server public key bytes decoded successfully.');
+          
+          console.log('[ClipBridge Pair] Deriving shared sync key...');
           const syncKey = await deriveSharedKey(privateKey, serverPubBytes);
+          console.log('[ClipBridge Pair] ✓ Authentication successful');
 
           // Save paired device metadata and derived key
           const newDevice: PairedDevice = {
@@ -506,13 +517,19 @@ export default function App() {
             name: desktopName,
             lastActive: Date.now(),
           };
+          console.log('[ClipBridge Pair] Saving paired device metadata to storage:', JSON.stringify(newDevice));
           await savePairedDevice(newDevice, syncKey);
+          console.log('[ClipBridge Pair] Device saved successfully.');
+
+          console.log('[ClipBridge Pair] Saving IP address to AsyncStorage...');
           await AsyncStorageSet(`ip_${desktopId}`, ipAddress);
+          console.log('[ClipBridge Pair] IP address saved.');
 
           // Update lists
           const devices = await getPairedDevices();
           setPairedList(devices);
 
+          console.log('[ClipBridge Pair] ✓ Clipboard channel ready');
           setPairingLoading(false);
           isPairingRef.current = false;
           ws.close();
@@ -521,25 +538,33 @@ export default function App() {
           // Instantly launch sync socket
           connectToDesktop(newDevice, ipAddress);
 
-        } catch (err) {
-          console.error('[ClipBridge Pair] Handshake decoding failed:', err);
+        } catch (err: any) {
+          console.error('[ClipBridge Pair] Handshake decoding failed during parsing step:', err?.message || err);
+          if (err && err.stack) {
+            console.error('[ClipBridge Pair] Error Stack Trace:', err.stack);
+          }
           setPairingLoading(false);
           isPairingRef.current = false;
           ws.close();
         }
       };
 
-      ws.onerror = (err) => {
+      ws.onclose = (event) => {
+        console.log(`[ClipBridge Pair] WebSocket closed. URL: ${url}, Code: ${event.code}, Reason: ${event.reason || 'None'}`);
+      };
+
+      ws.onerror = (err: any) => {
         clearTimeout(pairingTimeout);
         isPairingRef.current = false;
         console.error('[ClipBridge Pair] WebSocket error during pairing:', JSON.stringify(err));
+        console.error('[ClipBridge Pair] Disconnect reason details - WebSocket URL:', url);
         setPairingLoading(false);
         Alert.alert('Pairing Failed', 'Could not establish connection to the desktop. Make sure ClipBridge is running and both devices are on the same Wi-Fi network.');
       };
 
-    } catch (err) {
+    } catch (err: any) {
       isPairingRef.current = false;
-      console.error('[ClipBridge Pair] Failed setup:', err);
+      console.error('[ClipBridge Pair] Failed setup during socket instantiation:', err?.message || err);
       setPairingLoading(false);
     }
   };
