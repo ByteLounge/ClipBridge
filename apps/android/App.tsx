@@ -176,8 +176,19 @@ export default function App() {
       }
     }, 1000);
 
+    // Heartbeat ping timer (every 15 seconds while connected)
+    const heartbeat = setInterval(() => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        console.log('[ClipBridge Heartbeat] Sending PING...');
+        try {
+          wsRef.current.send('PING');
+        } catch (e) {}
+      }
+    }, 15000);
+
     return () => {
       clearInterval(interval);
+      clearInterval(heartbeat);
       if (wsRef.current) wsRef.current.close();
     };
   }, []);
@@ -275,10 +286,43 @@ export default function App() {
 
       ws.onmessage = async (e) => {
         try {
-          const env = JSON.parse(e.data);
-          const nonceBytes = hexToBytes(env.nonce);
-          const fullCtHex = env.ciphertext;
-          const tagHex = env.tag;
+          if (e.data === 'PONG') {
+            console.log('[ClipBridge Heartbeat] Received PONG.');
+            return;
+          }
+
+          const msgData = JSON.parse(e.data);
+
+          // Check for unencrypted server errors (e.g. unpair/auth failure)
+          if (msgData.type === 'ERROR') {
+            console.warn(`[ClipBridge Connect] Server returned error: ${msgData.code} - ${msgData.message}`);
+            if (msgData.code === 'UNPAIRED' || msgData.code === 'DECRYPTION_FAILED') {
+              console.log('[ClipBridge Connect] Device was unpaired by remote. Clearing pairing.');
+              Alert.alert('Unpaired by Desktop', 'This phone has been unpaired from the desktop client.');
+              
+              // Remove paired device local state
+              await deletePairedDevice(device.id);
+              const list = await getPairedDevices();
+              setPairedList(list);
+              
+              if (activeDeviceRef.current?.id === device.id) {
+                activeDeviceRef.current = null;
+                activeIpRef.current = null;
+              }
+              if (reconnectTimerRef.current) {
+                clearTimeout(reconnectTimerRef.current);
+                reconnectTimerRef.current = null;
+              }
+              retryCountRef.current = 0;
+              ws.close();
+            }
+            return;
+          }
+
+          // Otherwise treat as normal sync envelope
+          const nonceBytes = hexToBytes(msgData.nonce);
+          const fullCtHex = msgData.ciphertext;
+          const tagHex = msgData.tag;
 
           const decrypted = await decryptPayload(syncKey, fullCtHex, nonceBytes, tagHex);
           const payload = JSON.parse(decrypted);
@@ -529,6 +573,18 @@ export default function App() {
             await deletePairedDevice(id);
             const list = await getPairedDevices();
             setPairedList(list);
+            
+            // Clean up connection references to prevent reconnect timers from running
+            if (activeDeviceRef.current?.id === id) {
+              activeDeviceRef.current = null;
+              activeIpRef.current = null;
+            }
+            if (reconnectTimerRef.current) {
+              clearTimeout(reconnectTimerRef.current);
+              reconnectTimerRef.current = null;
+            }
+            retryCountRef.current = 0;
+
             if (connectedServer?.id === id && wsRef.current) {
               wsRef.current.close();
             }

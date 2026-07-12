@@ -99,16 +99,32 @@ pub static STATE: Lazy<Arc<Mutex<ServerState>>> = Lazy::new(|| {
 pub fn save_pairings() {
     let state = STATE.lock().unwrap();
     let pairing_path = get_config_dir().join("pairing.json");
-    if let Ok(serialized) = serde_json::to_string(&state.paired_devices) {
-        let _ = fs::write(pairing_path, serialized);
+    println!("[ClipBridge DB] Saving pairings to path: {:?}", pairing_path);
+    match serde_json::to_string(&state.paired_devices) {
+        Ok(serialized) => {
+            if let Err(e) = fs::write(&pairing_path, &serialized) {
+                eprintln!("[ClipBridge DB] Failed to write pairing.json: {:?}", e);
+            } else {
+                println!("[ClipBridge DB] Successfully saved {} paired devices.", state.paired_devices.len());
+            }
+        }
+        Err(e) => eprintln!("[ClipBridge DB] Failed to serialize pairings: {:?}", e),
     }
 }
 
 pub fn save_history() {
     let state = STATE.lock().unwrap();
     let history_path = get_config_dir().join("history.json");
-    if let Ok(serialized) = serde_json::to_string(&state.history) {
-        let _ = fs::write(history_path, serialized);
+    println!("[ClipBridge DB] Saving history to path: {:?}", history_path);
+    match serde_json::to_string(&state.history) {
+        Ok(serialized) => {
+            if let Err(e) = fs::write(&history_path, &serialized) {
+                eprintln!("[ClipBridge DB] Failed to write history.json: {:?}", e);
+            } else {
+                println!("[ClipBridge DB] Successfully saved {} history items.", state.history.len());
+            }
+        }
+        Err(e) => eprintln!("[ClipBridge DB] Failed to serialize history: {:?}", e),
     }
 }
 
@@ -331,7 +347,18 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
     // 1. Authentication Handshake
     let handshake_msg = match ws_receiver.next().await {
         Some(Ok(Message::Text(text))) => text,
-        _ => return,
+        Some(Ok(other)) => {
+            println!("[ClipBridge Connect] Handshake failed: Received non-text message type {:?}", other);
+            return;
+        }
+        Some(Err(e)) => {
+            println!("[ClipBridge Connect] Handshake failed: Socket error: {:?}", e);
+            return;
+        }
+        None => {
+            println!("[ClipBridge Connect] Handshake failed: Client disconnected immediately.");
+            return;
+        }
     };
 
     #[derive(serde::Deserialize)]
@@ -343,7 +370,10 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
 
     let hr: HandshakeRequest = match serde_json::from_str(&handshake_msg) {
         Ok(val) => val,
-        Err(_) => return,
+        Err(e) => {
+            println!("[ClipBridge Connect] Handshake failed: Invalid JSON payload. Error: {:?}", e);
+            return;
+        }
     };
 
     let paired_device = {
@@ -353,7 +383,10 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
 
     let device = match paired_device {
         Some(d) => d,
-        None => return, // Device not paired
+        None => {
+            println!("[ClipBridge Connect] Handshake failed: Device {} is not paired.", hr.device_id);
+            return; // Device not paired
+        }
     };
 
     // Decrypt handshake payload
@@ -363,32 +396,47 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
             arr.copy_from_slice(&n);
             arr
         }
-        _ => return,
+        _ => {
+            println!("[ClipBridge Connect] Handshake failed: Invalid nonce format/length from device {}.", hr.device_id);
+            return;
+        }
     };
 
     let encrypted_bytes = match hex::decode(&hr.encrypted_handshake) {
         Ok(b) if b.len() > 16 => b,
-        _ => return,
+        _ => {
+            println!("[ClipBridge Connect] Handshake failed: Invalid ciphertext format from device {}.", hr.device_id);
+            return;
+        }
     };
 
     let (ct, tag) = encrypted_bytes.split_at(encrypted_bytes.len() - 16);
 
     let decrypted = match decrypt_aes_gcm(&device.key, ct, &nonce_bytes, tag) {
         Ok(p) => p,
-        Err(_) => return,
+        Err(e) => {
+            println!("[ClipBridge Connect] Handshake failed: Decryption error for device {}. Error: {:?}", hr.device_id, e);
+            return;
+        }
     };
 
     let handshake_payload: HandshakePayload = match serde_json::from_slice(&decrypted) {
         Ok(p) => p,
-        Err(_) => return,
+        Err(e) => {
+            println!("[ClipBridge Connect] Handshake failed: Payload JSON format error for device {}. Error: {:?}", hr.device_id, e);
+            return;
+        }
     };
 
-    // Validate timestamp (max 10 seconds difference to prevent replays)
+    // Validate timestamp (max 5 minutes difference to prevent replays)
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    if now.abs_diff(handshake_payload.timestamp) > 10000 {
+    let diff = now.abs_diff(handshake_payload.timestamp);
+    if diff > 300000 {
+        println!("[ClipBridge Connect] Handshake failed: Clock skew too large for device {}. Server: {} ms, Client: {} ms, Delta: {} ms (Max: 300000 ms)",
+            hr.device_id, now, handshake_payload.timestamp, diff);
         return; // Replayed handshake or out of sync clock
     }
 
@@ -401,7 +449,7 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
         guard.active_txs.insert(peer_id.clone(), tx);
     }
 
-    println!("Secure client session established for device: {}", device.name);
+    println!("[ClipBridge Connect] Secure client session established for device: {} (ID: {})", device.name, peer_id);
 
     // Spawn a writer task to pipe updates to this client
     let peer_id_clone = peer_id.clone();
@@ -409,6 +457,7 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
     tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             if msg == "UNPAIR" {
+                println!("[ClipBridge Connection] UNPAIR signal received. Tearing down writer task for: {}", peer_id_clone);
                 break;
             }
             if ws_sender.send(Message::Text(msg)).await.is_err() {
@@ -418,7 +467,7 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
         // Cleanup on drop
         let mut guard = state_clone.lock().unwrap();
         guard.active_txs.remove(&peer_id_clone);
-        println!("Client session closed.");
+        println!("[ClipBridge Connection] Writer task cleaned up for client: {}", peer_id_clone);
     });
 
     // Reader task (listen for updates from this client)
@@ -427,11 +476,33 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
         guard.device_id.clone()
     };
 
-    while let Some(Ok(msg)) = ws_receiver.next().await {
+    while let Some(res) = ws_receiver.next().await {
+        let msg = match res {
+            Ok(m) => m,
+            Err(e) => {
+                println!("[ClipBridge Connection] Read error occurred for client {}: {:?}", peer_id, e);
+                break;
+            }
+        };
+
         if let Message::Text(text) = msg {
+            // Heartbeat check
+            if text == "PING" {
+                println!("[ClipBridge Heartbeat] Received PING from device {}. Returning PONG.", peer_id);
+                let tx_opt = {
+                    let guard = state.lock().unwrap();
+                    guard.active_txs.get(&peer_id).cloned()
+                };
+                if let Some(active_tx) = tx_opt {
+                    let _ = active_tx.send("PONG".to_string());
+                }
+                continue;
+            }
+
             if let Ok(env) = serde_json::from_str::<SyncEnvelope>(&text) {
                 // 1. Verify sender ID is matching this session device
                 if env.sender_id != peer_id {
+                    println!("[ClipBridge Sync] Warning: Envelope sender ID mismatch (got {}, expected {})", env.sender_id, peer_id);
                     continue;
                 }
 
@@ -465,7 +536,7 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
                             guard.paired_devices.contains_key(&peer_id)
                         };
                         if !is_still_paired {
-                            println!("Device {} is no longer paired. Closing socket.", peer_id);
+                            println!("[ClipBridge Connection] Device {} is no longer paired. Terminating session.", peer_id);
                             break;
                         }
 
@@ -473,6 +544,8 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
                         if payload.origin_device_id == my_device_id {
                             continue; // Reflected loop packet
                         }
+
+                        println!("[ClipBridge Sync] Successfully received and decrypted clipboard payload from device: {}", device.name);
 
                         // Write to local OS clipboard
                         let _ = clipboard::write_clipboard_text(&payload.content, &payload.clip_id);
@@ -493,6 +566,7 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
     }
 
     // Cleanup when reader exits
+    println!("[ClipBridge Connection] Reader task exiting for client: {}", peer_id);
     let mut guard = state.lock().unwrap();
     guard.active_txs.remove(&peer_id);
 }

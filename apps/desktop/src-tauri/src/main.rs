@@ -61,14 +61,20 @@ fn generate_pairing_qr() -> Result<PairingQRInfo, String> {
 #[tauri::command]
 fn get_paired_devices() -> Vec<PairedDevice> {
     let state = STATE.lock().unwrap();
-    state.paired_devices.values().cloned().collect()
+    let devices: Vec<PairedDevice> = state.paired_devices.values().cloned().collect();
+    println!("[ClipBridge DB] get_paired_devices called. Current devices in memory: {:?}", 
+        devices.iter().map(|d| &d.name).collect::<Vec<_>>());
+    devices
 }
 
 #[tauri::command]
 fn delete_paired_device(device_id: String) -> Result<(), String> {
+    println!("[ClipBridge DB] delete_paired_device called for ID: {}", device_id);
     let mut state = STATE.lock().unwrap();
-    state.paired_devices.remove(&device_id);
+    let removed = state.paired_devices.remove(&device_id);
+    println!("[ClipBridge DB] Device removed from memory? {:?}", removed.is_some());
     if let Some(tx) = state.active_txs.remove(&device_id) {
+        println!("[ClipBridge DB] Terminating active channel for ID: {}", device_id);
         let _ = tx.send("UNPAIR".to_string());
     }
     drop(state);
