@@ -39,7 +39,7 @@ class ClipboardManagerHelper @Inject constructor(
             // Temporarily remove listener to avoid echoing our own sync
             val cachedListener = activeListener
             if (cachedListener != null) {
-                clipboard.removeOnPrimaryClipChangedListener(cachedListener)
+                clipboard.removePrimaryClipChangedListener(cachedListener)
             }
 
             clipboard.setPrimaryClip(clip)
@@ -47,7 +47,7 @@ class ClipboardManagerHelper @Inject constructor(
             if (cachedListener != null) {
                 // Delay readding listener slightly to allow the OS to complete write
                 mainHandler.postDelayed({
-                    clipboard.addOnPrimaryClipChangedListener(cachedListener)
+                    clipboard.addPrimaryClipChangedListener(cachedListener)
                 }, 500)
             }
             onComplete()
@@ -57,7 +57,7 @@ class ClipboardManagerHelper @Inject constructor(
     fun startListening(listener: ClipboardListener) {
         mainHandler.post {
             if (activeListener != null) {
-                clipboard.removeOnPrimaryClipChangedListener(activeListener)
+                clipboard.removePrimaryClipChangedListener(activeListener)
             }
             
             activeListener = ClipboardManager.OnPrimaryClipChangedListener {
@@ -67,14 +67,14 @@ class ClipboardManagerHelper @Inject constructor(
                 }
             }
             
-            clipboard.addOnPrimaryClipChangedListener(activeListener)
+            clipboard.addPrimaryClipChangedListener(activeListener)
         }
     }
 
     fun stopListening() {
         mainHandler.post {
             activeListener?.let {
-                clipboard.removeOnPrimaryClipChangedListener(it)
+                clipboard.removePrimaryClipChangedListener(it)
                 activeListener = null
             }
         }

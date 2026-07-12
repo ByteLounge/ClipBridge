@@ -31,6 +31,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.clipbridge.ui.theme.PrimaryBlue
 import com.clipbridge.ui.viewmodel.MainViewModel
+import com.clipbridge.data.DiscoveredServer
 import com.google.zxing.*
 import com.google.zxing.common.HybridBinarizer
 import java.nio.ByteBuffer
@@ -102,21 +103,16 @@ fun PairScreen(
                             // To make the QR scan pair instantly without waiting for NSD updates:
                             // We can let the desktop encode its CURRENT IP Address directly inside the pairing details as well, e.g. cbpair:id:key:name:ip:port
                             // Let's implement dynamic IP fallback lookup or resolve from discovered list:
-                            viewModel.viewModelScope.launch {
-                                val discovered = viewModel.pairedDevices.value // Or query active discover manager list
-                                // As a robust backup, we parse IP from QR code or look up from discovery.
-                                // Let's check parts.
-                                val parts = qrText.split(":")
-                                if (parts.size >= 4) {
-                                    // For testing simplicity we can resolve host from parts if available or hardcode local subnet broadcast, 
-                                    // or scan active discoveries matching parts[1].
-                                    // Let's find discovered desktop matching parts[1] (Device ID):
-                                    val match = SyncDiscoveryBridge.discoveredServers.find { it.id == parts[1] }
-                                    val ip = match?.ipAddress ?: "192.168.1.142" // fallback IP or dynamic resolution
-                                    val port = match?.port ?: 54670
-                                    
-                                    viewModel.initiatePairing(qrText, ip, port)
-                                }
+                            val parts = qrText.split(":")
+                            if (parts.size >= 4) {
+                                // For testing simplicity we can resolve host from parts if available or hardcode local subnet broadcast, 
+                                // or scan active discoveries matching parts[1].
+                                // Let's find discovered desktop matching parts[1] (Device ID):
+                                val match = SyncDiscoveryBridge.discoveredServers.find { it.id == parts[1] }
+                                val ip = match?.ipAddress ?: "192.168.1.142" // fallback IP or dynamic resolution
+                                val port = match?.port ?: 54670
+                                
+                                viewModel.initiatePairing(qrText, ip, port)
                             }
                         })
 

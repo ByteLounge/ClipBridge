@@ -272,7 +272,7 @@ fun HomeScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Default.Send, contentDescription = "Send", color = Color.White, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Send, contentDescription = "Send", tint = Color.White, modifier = Modifier.size(16.dp))
                                 Text("Broadcast Clip", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
                         }

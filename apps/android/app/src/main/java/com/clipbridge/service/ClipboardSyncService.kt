@@ -112,7 +112,7 @@ class ClipboardSyncService : Service() {
         val url = "ws://${server.ipAddress}:${server.port}/ws"
         Log.d(TAG, "Connecting to desktop: $url")
         
-        while (coroutineContext.isActive) {
+        while (currentCoroutineContext().isActive) {
             try {
                 client.webSocket(url) {
                     Log.d(TAG, "WS Connected to desktop: ${server.name}")

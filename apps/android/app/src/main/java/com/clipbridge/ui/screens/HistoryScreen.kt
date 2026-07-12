@@ -77,7 +77,7 @@ fun HistoryScreen(
                 value = searchVal,
                 onValueChange = { searchVal = it },
                 placeholder = { Text("Search history...", color = TextMuted) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", color = TextMuted) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = TextMuted) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
