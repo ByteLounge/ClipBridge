@@ -200,7 +200,7 @@ export default function App() {
 
   const handleUnpair = async (id: string) => {
     try {
-      await callTauri("delete_paired_device", { device_id: id });
+      await callTauri("delete_paired_device", { deviceId: id });
     } catch (err) {
       console.error("Failed to unpair device on backend:", err);
     }

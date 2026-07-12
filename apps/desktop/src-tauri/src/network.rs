@@ -56,7 +56,22 @@ pub struct ServerState {
 }
 
 pub static STATE: Lazy<Arc<Mutex<ServerState>>> = Lazy::new(|| {
-    let device_id = Uuid::new_v4().to_string();
+    let path = get_config_dir();
+    let id_path = path.join("device_id.txt");
+    let device_id = if id_path.exists() {
+        fs::read_to_string(&id_path)
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|_| {
+                let id = Uuid::new_v4().to_string();
+                let _ = fs::write(&id_path, &id);
+                id
+            })
+    } else {
+        let id = Uuid::new_v4().to_string();
+        let _ = fs::write(&id_path, &id);
+        id
+    };
+
     let display_name = hostname::get()
         .map(|h| h.to_string_lossy().to_string())
         .unwrap_or_else(|_| "Desktop PC".to_string());

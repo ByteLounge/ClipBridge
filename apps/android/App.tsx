@@ -102,6 +102,7 @@ export default function App() {
   const activeIpRef = useRef<string | null>(null);
   const isConnectingRef = useRef(false);
   const appStateRef = useRef(AppState.currentState);
+  const deviceIdRef = useRef('');
 
   // Lifecycle monitor for foreground/background state
   useEffect(() => {
@@ -144,6 +145,7 @@ export default function App() {
         cachedId = Math.random().toString(36).substring(2, 15);
         await AsyncStorageSet('device_id', cachedId);
       }
+      deviceIdRef.current = cachedId;
       setDeviceId(cachedId);
       
       const devices = await getPairedDevices();
@@ -266,7 +268,7 @@ export default function App() {
           const { ciphertext, tag } = await encryptPayload(syncKey, ptStr, nonce);
 
           const handshakeReq = {
-            device_id: deviceId,
+            device_id: deviceIdRef.current,
             nonce: bytesToHex(nonce),
             encrypted_handshake: ciphertext + tag,
           };
@@ -411,7 +413,7 @@ export default function App() {
         timestamp: timestamp,
         data_type: 'text',
         content: text,
-        origin_device_id: deviceId,
+        origin_device_id: deviceIdRef.current,
         ttl: 3,
       };
 
@@ -419,7 +421,7 @@ export default function App() {
       const { ciphertext, tag } = await encryptPayload(syncKey, JSON.stringify(payload), nonce);
 
       const envelope = {
-        sender_id: deviceId,
+        sender_id: deviceIdRef.current,
         nonce: bytesToHex(nonce),
         ciphertext,
         tag,
@@ -489,7 +491,7 @@ export default function App() {
         console.log('[ClipBridge Pair] ✓ WebSocket connected');
         console.log('[ClipBridge Pair] Sending PAIR_REQUEST...');
         const pairReq = {
-          device_id: deviceId,
+          device_id: deviceIdRef.current,
           display_name: displayName,
           client_public_key: bytesToHex(publicKey),
         };
