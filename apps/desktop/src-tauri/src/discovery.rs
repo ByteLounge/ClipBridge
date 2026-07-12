@@ -41,6 +41,7 @@ pub fn start_mdns_advertisement(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn stop_mdns_advertisement() {
     let mut global_daemon = MDNS_DAEMON.lock().unwrap();
     if let Some(daemon) = global_daemon.take() {

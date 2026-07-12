@@ -1,4 +1,5 @@
 import './src/polyfills';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
@@ -14,6 +15,7 @@ import {
   Platform,
   Dimensions,
   Animated,
+  AppState,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Clipboard from 'expo-clipboard';
@@ -92,6 +94,48 @@ export default function App() {
   const lastLocalClipboard = useRef('');
   const wsRef = useRef<WebSocket | null>(null);
 
+  // Connection manager references
+  const retryCountRef = useRef(0);
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isPairingRef = useRef(false);
+  const activeDeviceRef = useRef<PairedDevice | null>(null);
+  const activeIpRef = useRef<string | null>(null);
+  const isConnectingRef = useRef(false);
+  const appStateRef = useRef(AppState.currentState);
+
+  // Lifecycle monitor for foreground/background state
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      console.log(`[ClipBridge Lifecycle] AppState changed to: ${nextAppState}`);
+      
+      if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+        console.log('[ClipBridge Lifecycle] App came to foreground. Resuming connections...');
+        retryCountRef.current = 0; // Reset backoff count
+        if (activeDeviceRef.current && activeIpRef.current) {
+          connectToDesktop(activeDeviceRef.current, activeIpRef.current);
+        }
+      } else if (nextAppState.match(/inactive|background/)) {
+        console.log('[ClipBridge Lifecycle] App backgrounded. Suspending retry timers.');
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = null;
+        }
+        if (wsRef.current) {
+          try {
+            wsRef.current.close();
+          } catch (e) {}
+          wsRef.current = null;
+        }
+      }
+      
+      appStateRef.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   useEffect(() => {
     // Generate device id
     const initDevice = async () => {
@@ -153,48 +197,86 @@ export default function App() {
     } catch {}
   };
 
-  // Connects to a Desktop client via WebSocket
+  // Connects to a Desktop client via WebSocket with Exponential Backoff
   const connectToDesktop = async (device: PairedDevice, ipAddress: string) => {
+    if (isConnectingRef.current) {
+      console.log('[ClipBridge Connect] Connection attempt already in progress. Skipping.');
+      return;
+    }
+    isConnectingRef.current = true;
+    
+    // Close existing socket if any
+    if (wsRef.current) {
+      console.log('[ClipBridge Connect] Closing existing socket.');
+      try {
+        wsRef.current.close();
+      } catch (e) {}
+      wsRef.current = null;
+    }
+
+    activeDeviceRef.current = device;
+    activeIpRef.current = ipAddress;
+
     const url = `ws://${ipAddress}:54670/ws`;
-    console.log(`Connecting WS to desktop: ${url}`);
+    console.log(`[ClipBridge Connect] Attempting WS connection to: ${url} (Retry: ${retryCountRef.current})`);
     
     try {
       const syncKey = await getSyncKey(device.id);
       if (!syncKey) {
-        Alert.alert('Security Error', 'Symmetric key missing for this device.');
+        console.error('[ClipBridge Auth] Stored pairing key is missing/invalid.');
+        Alert.alert('Authentication Failed', 'Stored pairing is invalid. Please unpair and repair your device.');
+        isConnectingRef.current = false;
         return;
       }
 
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
+      // Setup a connection timeout
+      const connTimeout = setTimeout(() => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          console.warn(`[ClipBridge Connect] Connection to ${url} timed out.`);
+          ws.close();
+        }
+      }, 10000);
+
       ws.onopen = async () => {
-        // Encrypted Authentication Handshake
-        const nonce = generateNonce();
-        const handshakePayload = {
-          timestamp: Date.now(),
-          challenge: 'clipbridge-auth-challenge',
-        };
-        const ptStr = JSON.stringify(handshakePayload);
-        const { ciphertext, tag } = await encryptPayload(syncKey, ptStr, nonce);
+        clearTimeout(connTimeout);
+        console.log('[ClipBridge Connect] Socket connected. Performing handshake...');
+        
+        try {
+          // Encrypted Authentication Handshake
+          const nonce = generateNonce();
+          const handshakePayload = {
+            timestamp: Date.now(),
+            challenge: 'clipbridge-auth-challenge',
+          };
+          const ptStr = JSON.stringify(handshakePayload);
+          const { ciphertext, tag } = await encryptPayload(syncKey, ptStr, nonce);
 
-        const handshakeReq = {
-          device_id: deviceId,
-          nonce: bytesToHex(nonce),
-          encrypted_handshake: ciphertext + tag,
-        };
+          const handshakeReq = {
+            device_id: deviceId,
+            nonce: bytesToHex(nonce),
+            encrypted_handshake: ciphertext + tag,
+          };
 
-        ws.send(JSON.stringify(handshakeReq));
-        setIsConnected(true);
-        setConnectedServer(device);
+          ws.send(JSON.stringify(handshakeReq));
+          
+          setIsConnected(true);
+          setConnectedServer(device);
+          retryCountRef.current = 0; // reset retry count on successful connection
+          isConnectingRef.current = false;
+          console.log('[ClipBridge Connect] Handshake successful. Active sync session established.');
+        } catch (authErr) {
+          console.error('[ClipBridge Auth] Handshake encryption failed:', authErr);
+          ws.close();
+        }
       };
 
       ws.onmessage = async (e) => {
         try {
           const env = JSON.parse(e.data);
           const nonceBytes = hexToBytes(env.nonce);
-          
-          // Reconstruct ciphertext and 16-byte tag
           const fullCtHex = env.ciphertext;
           const tagHex = env.tag;
 
@@ -218,24 +300,55 @@ export default function App() {
           await saveHistoryItem(newItem);
           const history = await getClipboardHistory();
           setHistoryList(history);
-
         } catch (err) {
-          console.error('Failed to decrypt WS frame', err);
+          console.error('[ClipBridge Sync] Failed to decrypt/process incoming WS frame:', err);
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        clearTimeout(connTimeout);
         setIsConnected(false);
         setConnectedServer(null);
+        isConnectingRef.current = false;
+        
+        console.log(`[ClipBridge Connect] Socket closed. Code: ${event.code}, Reason: ${event.reason}`);
+        
+        // Only schedule reconnect if the device is still active and app is foregrounded
+        if (activeDeviceRef.current?.id === device.id && appStateRef.current === 'active') {
+          scheduleReconnect();
+        }
       };
       
       ws.onerror = (err) => {
-        console.error('WebSocket connection error', err);
+        clearTimeout(connTimeout);
+        isConnectingRef.current = false;
+        console.warn('[ClipBridge Connect] WebSocket error occurred:', JSON.stringify(err));
       };
 
     } catch (err) {
-      console.error('Failed connection setup', err);
+      isConnectingRef.current = false;
+      console.error('[ClipBridge Connect] Failed connection setup:', err);
+      scheduleReconnect();
     }
+  };
+
+  // Schedule reconnect with exponential backoff
+  const scheduleReconnect = () => {
+    if (reconnectTimerRef.current) return; // Already scheduled
+    
+    // Calculate exponential delay: 1s, 2s, 4s, 8s, 16s, max 30s
+    const backoffSeconds = Math.min(Math.pow(2, retryCountRef.current), 30);
+    const delayMs = backoffSeconds * 1000;
+    retryCountRef.current += 1;
+
+    console.log(`[ClipBridge Connect] Scheduling reconnection in ${backoffSeconds}s...`);
+
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectTimerRef.current = null;
+      if (activeDeviceRef.current && activeIpRef.current && appStateRef.current === 'active') {
+        connectToDesktop(activeDeviceRef.current, activeIpRef.current);
+      }
+    }, delayMs);
   };
 
   // Broadcasts clipboard contents over the active WS socket
@@ -288,6 +401,9 @@ export default function App() {
 
   // Pair device scanned from QR code
   const handleQRScanned = async (data: string) => {
+    if (isPairingRef.current) return;
+    isPairingRef.current = true;
+
     setShowScanner(false);
     setPairingLoading(true);
 
@@ -296,6 +412,7 @@ export default function App() {
     if (parts.length < 4 || parts[0] !== 'cbpair') {
       Alert.alert('Error', 'Invalid QR code schema.');
       setPairingLoading(false);
+      isPairingRef.current = false;
       return;
     }
 
@@ -307,13 +424,22 @@ export default function App() {
     const port = parts[5] || '54670';
 
     const url = `ws://${ipAddress}:${port}/pair`;
-    console.log(`Connecting pairing WS to: ${url}`);
+    console.log(`[ClipBridge Pair] Attempting pairing connection to: ${url}`);
 
     try {
       const { privateKey, publicKey } = generateX25519KeyPair();
       const ws = new WebSocket(url);
 
+      const pairingTimeout = setTimeout(() => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          console.warn('[ClipBridge Pair] Pairing connection timed out.');
+          ws.close();
+        }
+      }, 10000);
+
       ws.onopen = () => {
+        clearTimeout(pairingTimeout);
+        console.log('[ClipBridge Pair] Socket opened, sending PAIR_REQUEST...');
         const pairReq = {
           device_id: deviceId,
           display_name: displayName,
@@ -344,6 +470,7 @@ export default function App() {
           setPairedList(devices);
 
           setPairingLoading(false);
+          isPairingRef.current = false;
           ws.close();
           Alert.alert('Success', `Paired with ${desktopName}! Connecting sync socket...`);
           
@@ -351,20 +478,24 @@ export default function App() {
           connectToDesktop(newDevice, ipAddress);
 
         } catch (err) {
-          console.error('Handshake decoding failed', err);
+          console.error('[ClipBridge Pair] Handshake decoding failed:', err);
           setPairingLoading(false);
+          isPairingRef.current = false;
           ws.close();
         }
       };
 
       ws.onerror = (err) => {
-        console.error('Pairing WS Error', err);
+        clearTimeout(pairingTimeout);
+        isPairingRef.current = false;
+        console.error('[ClipBridge Pair] WebSocket error during pairing:', JSON.stringify(err));
         setPairingLoading(false);
-        Alert.alert('Error', 'Failed to connect to the desktop pairing port.');
+        Alert.alert('Pairing Failed', 'Could not establish connection to the desktop. Make sure ClipBridge is running and both devices are on the same Wi-Fi network.');
       };
 
     } catch (err) {
-      console.error(err);
+      isPairingRef.current = false;
+      console.error('[ClipBridge Pair] Failed setup:', err);
       setPairingLoading(false);
     }
   };

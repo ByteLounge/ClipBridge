@@ -87,7 +87,7 @@ fun SettingsScreen(
                         )
                     }
 
-                    Divider(color = BorderGlass)
+                    HorizontalDivider(color = BorderGlass)
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -141,7 +141,7 @@ fun SettingsScreen(
                         )
                     }
 
-                    Divider(color = BorderGlass)
+                    HorizontalDivider(color = BorderGlass)
 
                     Column {
                         Text("Encryption Standard", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)

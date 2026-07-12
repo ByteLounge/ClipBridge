@@ -2,7 +2,7 @@ import * as Crypto from 'expo-crypto';
 
 // Polyfill TextEncoder and TextDecoder for curves
 if (typeof global.TextEncoder === 'undefined') {
-  global.TextEncoder = class TextEncoder {
+  (global as any).TextEncoder = class TextEncoder {
     encode(str: string): Uint8Array {
       const arr = [];
       for (let i = 0; i < str.length; i++) {
@@ -14,7 +14,7 @@ if (typeof global.TextEncoder === 'undefined') {
 }
 
 if (typeof global.TextDecoder === 'undefined') {
-  global.TextDecoder = class TextDecoder {
+  (global as any).TextDecoder = class TextDecoder {
     decode(arr: Uint8Array): string {
       let str = '';
       for (let i = 0; i < arr.length; i++) {

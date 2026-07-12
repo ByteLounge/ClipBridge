@@ -1,6 +1,6 @@
 use aes_gcm::{
-    aead::{Aead, KeyInit, Payload},
-    Aes256Gcm, Nonce, Tag
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce
 };
 use x25519_dalek::{PublicKey, StaticSecret};
 use std::error::Error;
@@ -14,7 +14,38 @@ pub fn generate_x25519_keypair() -> (StaticSecret, Vec<u8>) {
     (secret, public.as_bytes().to_vec())
 }
 
-/// Derives a shared symmetric key (AES-256) from a local private key and a peer's public key.
+fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
+    use sha2::{Sha256, Digest};
+    let mut ipad = [0x36u8; 64];
+    let mut opad = [0x5cu8; 64];
+    
+    let mut formatted_key = [0u8; 64];
+    if key.len() > 64 {
+        let hash = Sha256::digest(key);
+        formatted_key[..32].copy_from_slice(&hash);
+    } else {
+        formatted_key[..key.len()].copy_from_slice(key);
+    }
+    
+    for i in 0..64 {
+        ipad[i] ^= formatted_key[i];
+        opad[i] ^= formatted_key[i];
+    }
+    
+    let mut inner = Sha256::new();
+    inner.update(&ipad);
+    inner.update(data);
+    let inner_hash = inner.finalize();
+    
+    let mut outer = Sha256::new();
+    outer.update(&opad);
+    outer.update(&inner_hash);
+    let outer_hash = outer.finalize();
+    
+    outer_hash.into()
+}
+
+/// Derives a shared symmetric key (AES-256) from a local private key and a peer's public key using standard HKDF-SHA256.
 pub fn derive_shared_key(
     private_key: &StaticSecret,
     peer_public_key_bytes: &[u8],
@@ -28,15 +59,15 @@ pub fn derive_shared_key(
     let peer_public = PublicKey::from(arr);
     let shared_secret = private_key.diffie_hellman(&peer_public);
     
-    // HKDF-SHA256 derivation simplified
-    // In our context we can use standard SHA-256 to hash the shared secret and generate a 256-bit key
-    use sha2::{Sha256, Digest};
-    let mut hasher = Sha256::new();
-    hasher.update(shared_secret.as_bytes());
-    hasher.update(b"clipbridge-sync-key");
-    let result = hasher.finalize();
+    // Standard HKDF-SHA256 (32-byte salt of zeros, info: "clipbridge-sync-key")
+    let salt = [0u8; 32];
+    let prk = hmac_sha256(&salt, shared_secret.as_bytes());
     
-    Ok(result.to_vec())
+    let mut expand_data = b"clipbridge-sync-key".to_vec();
+    expand_data.push(1); // Block counter 1
+    let k_sync = hmac_sha256(&prk, &expand_data);
+    
+    Ok(k_sync.to_vec())
 }
 
 /// Encrypts a message using AES-256-GCM with the derived symmetric key.

@@ -14,7 +14,7 @@ use std::fs;
 use hex;
 use dirs;
 use hostname;
-use crate::crypto::{self, derive_shared_key, decrypt_aes_gcm, encrypt_aes_gcm, generate_nonce};
+use crate::crypto::{derive_shared_key, decrypt_aes_gcm, encrypt_aes_gcm, generate_nonce};
 use crate::clipboard::{self, ClipboardUpdate};
 
 // Configuration & DB files path
@@ -404,10 +404,13 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
     println!("Secure client session established for device: {}", device.name);
 
     // Spawn a writer task to pipe updates to this client
-    let mut peer_id_clone = peer_id.clone();
+    let peer_id_clone = peer_id.clone();
     let state_clone = state.clone();
     tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
+            if msg == "UNPAIR" {
+                break;
+            }
             if ws_sender.send(Message::Text(msg)).await.is_err() {
                 break; // Connection closed
             }
@@ -456,6 +459,16 @@ async fn handle_live_ws(socket: WebSocket, state: Arc<Mutex<ServerState>>) {
                 if let Ok(dec_bytes) = decrypt_aes_gcm(&device.key, &ct, &nonce_bytes, &tag) {
                     if let Ok(payload) = serde_json::from_slice::<DecryptedSyncPayload>(&dec_bytes) {
                         
+                        // Dynamic unpairing check
+                        let is_still_paired = {
+                            let guard = state.lock().unwrap();
+                            guard.paired_devices.contains_key(&peer_id)
+                        };
+                        if !is_still_paired {
+                            println!("Device {} is no longer paired. Closing socket.", peer_id);
+                            break;
+                        }
+
                         // 4. Validate payload & loop prevention
                         if payload.origin_device_id == my_device_id {
                             continue; // Reflected loop packet

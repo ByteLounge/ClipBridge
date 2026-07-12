@@ -14,7 +14,7 @@ import io.ktor.client.engine.okhttp.*
 import io.ktor.client.plugins.websocket.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -73,17 +73,21 @@ class ClipboardSyncService : Service() {
             }
         })
 
-        // Observe network discovery and auto-connect
+        // Observe network discovery and paired devices from database
         serviceScope.launch {
-            discoveryManager.discoverServers().collectLatest { servers ->
-                val paired = db.pairedDeviceDao().getAllDevicesList().associateBy { it.id }
+            combine(
+                discoveryManager.discoverServers(),
+                db.pairedDeviceDao().getAllDevices()
+            ) { servers, pairedList ->
+                Pair(servers, pairedList.associateBy { it.id })
+            }.collectLatest { (servers, pairedMap) ->
+                // Identify servers that are both visible and paired
+                val activePairedServerIds = servers.map { it.id }.filter { pairedMap.containsKey(it) }.toSet()
                 
-                // Identify servers that are paired
-                val activeServerIds = servers.map { it.id }.toSet()
-                
-                // Disconnect dropped servers
+                // Disconnect any active connection that is no longer discovered or no longer paired
                 activeConnections.keys.toList().forEach { connectedId ->
-                    if (!activeServerIds.contains(connectedId)) {
+                    if (!activePairedServerIds.contains(connectedId)) {
+                        Log.d(TAG, "Cancelling connection to $connectedId because it was either lost or unpaired")
                         activeConnections[connectedId]?.cancel()
                         activeConnections.remove(connectedId)
                         updateNotificationText("Disconnected from desktop")
@@ -92,7 +96,7 @@ class ClipboardSyncService : Service() {
 
                 // Connect to newly discovered paired servers
                 servers.forEach { server ->
-                    val pairInfo = paired[server.id]
+                    val pairInfo = pairedMap[server.id]
                     if (pairInfo != null && !activeConnections.containsKey(server.id)) {
                         val job = serviceScope.launch {
                             connectToDesktop(server, pairInfo.syncKey)

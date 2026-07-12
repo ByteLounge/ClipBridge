@@ -1,5 +1,5 @@
 use arboard::Clipboard;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use once_cell::sync::Lazy;
 use std::time::Duration;
 use tokio::sync::broadcast;

@@ -6,18 +6,14 @@ mod discovery;
 mod clipboard;
 mod network;
 
-use tauri::{AppHandle, Manager};
-use std::sync::Arc;
 use tokio::sync::broadcast;
 use crate::network::{STATE, ClipboardItem, PairedDevice, save_pairings, save_history};
 
 #[derive(serde::Serialize)]
 struct PairingQRInfo {
-    qr_data: string,
-    qr_svg: string,
+    qr_data: String,
+    qr_svg: String,
 }
-
-type string = String;
 
 #[tauri::command]
 fn get_device_id() -> String {
@@ -72,6 +68,9 @@ fn get_paired_devices() -> Vec<PairedDevice> {
 fn delete_paired_device(device_id: String) -> Result<(), String> {
     let mut state = STATE.lock().unwrap();
     state.paired_devices.remove(&device_id);
+    if let Some(tx) = state.active_txs.remove(&device_id) {
+        let _ = tx.send("UNPAIR".to_string());
+    }
     drop(state);
     save_pairings();
     Ok(())

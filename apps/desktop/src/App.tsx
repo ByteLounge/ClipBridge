@@ -9,11 +9,9 @@ import {
   Trash2,
   Pin,
   Wifi,
-  WifiOff,
   Sun,
   Moon,
   Tv,
-  ArrowRight,
   Shield,
   RefreshCw,
   Plus,
@@ -140,8 +138,8 @@ export default function App() {
   const [lanOnly, setLanOnly] = useState(true);
 
   // Stats
-  const [latency, setLatency] = useState(12); // ms
-  const [speed, setSpeed] = useState(2.4); // MB/s
+  const latency = 12; // ms
+  const speed = 2.4; // MB/s
 
   useEffect(() => {
     // Initial fetches

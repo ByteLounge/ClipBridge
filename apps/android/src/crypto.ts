@@ -46,8 +46,19 @@ export function generateX25519KeyPair(): { privateKey: Uint8Array; publicKey: Ui
   return { privateKey, publicKey };
 }
 
+function hmacSha256(key: Uint8Array, data: Uint8Array): Uint8Array {
+  const keyBytes = bytesToBinary(key);
+  const dataBytes = bytesToBinary(data);
+
+  const hmac = forge.hmac.create();
+  hmac.start('sha256', forge.util.createBuffer(keyBytes));
+  hmac.update(forge.util.createBuffer(dataBytes));
+  const digest = hmac.digest();
+  return binaryToBytes(digest.getBytes());
+}
+
 /**
- * Computes shared secret via X25519 and expands it to a 256-bit symmetric key using HKDF-SHA256.
+ * Computes shared secret via X25519 and expands it to a 256-bit symmetric key using standard HKDF-SHA256.
  */
 export async function deriveSharedKey(
   privateKey: Uint8Array,
@@ -55,32 +66,18 @@ export async function deriveSharedKey(
 ): Promise<Uint8Array> {
   const sharedSecret = x25519.getSharedSecret(privateKey, peerPublicKey);
   
+  // 1. Extract: PRK = HMAC-SHA256(Salt=zeros(32), IKM=sharedSecret)
   const salt = new Uint8Array(32);
-  const extractInput = new Uint8Array(salt.length + sharedSecret.length);
-  extractInput.set(salt, 0);
-  extractInput.set(sharedSecret, salt.length);
+  const prk = hmacSha256(salt, sharedSecret);
   
-  const prkHex = await Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    Buffer.from(extractInput).toString('base64'),
-    { encoding: Crypto.CryptoEncoding.HEX }
-  );
-  
-  const prk = hexToBytes(prkHex);
-
+  // 2. Expand: K_sync = HMAC-SHA256(PRK, info + 0x01)
   const info = new TextEncoder().encode('clipbridge-sync-key');
-  const expandInput = new Uint8Array(prk.length + info.length + 1);
-  expandInput.set(prk, 0);
-  expandInput.set(info, prk.length);
-  expandInput[prk.length + info.length] = 1; // counter = 1
-
-  const syncKeyHex = await Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    Buffer.from(expandInput).toString('base64'),
-    { encoding: Crypto.CryptoEncoding.HEX }
-  );
-
-  return hexToBytes(syncKeyHex);
+  const infoWithCounter = new Uint8Array(info.length + 1);
+  infoWithCounter.set(info, 0);
+  infoWithCounter[info.length] = 1; // Block counter 1
+  
+  const kSync = hmacSha256(prk, infoWithCounter);
+  return kSync;
 }
 
 /**
