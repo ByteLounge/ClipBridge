@@ -1,43 +1,94 @@
 # Contributing to ClipBridge
 
-First off, thank you for considering contributing to ClipBridge! It's people like you that make ClipBridge such a great tool for sharing clipboards securely.
+First off, thank you for taking the time to contribute! :heart:
+
+ClipBridge is an open-source, community-driven project. We welcome contributions of all forms—bug reports, documentation updates, feature designs, and code modifications.
+
+This document outlines the workflows, coding standards, and expectations for contributors.
 
 ## Code of Conduct
 
-By participating in this project, you agree to abide by our Code of Conduct. Please be respectful and supportive of other contributors.
+By participating in this project, you agree to abide by our [Code of Conduct](file:///D:/Projects/ClipBridge/CODE_OF_CONDUCT.md). Please report any unacceptable behavior to [support@clipbridge.org](mailto:support@clipbridge.org).
 
 ## How Can I Contribute?
 
-### Reporting Bugs
+### 1. Reporting Bugs
+- Search existing [issues](https://github.com/ByteLounge/ClipBridge/issues) to ensure the bug hasn't already been reported.
+- Open a new issue using our bug report template.
+- Include OS version, device brand (for mobile), app version, and reproduction steps.
+- Provide raw log traces if available.
 
-- Search the issue tracker to ensure the bug hasn't already been reported.
-- If you can't find an open issue, open a new one. Include a clear title, a description of the issue, steps to reproduce, and the expected behavior.
+### 2. Suggesting Features
+- Open a new thread in [GitHub Discussions (Ideas)](https://github.com/ByteLounge/ClipBridge/discussions).
+- Explain the problem, why current workflows fail, and your proposed interface or behaviour change.
 
-### Suggesting Enhancements
+### 3. Submitting Code Changes
+- Fork the repository and create your branch from the `main` branch.
+- Keep changes focused. Avoid mixing refactoring, feature additions, and typo fixes in a single pull request.
 
-- Open a feature request issue.
-- Describe the feature you'd like to see, why it would be useful, and how it fits into the "Apple-quality UX" goals of ClipBridge.
+---
 
-### Pull Requests
+## Git Workflows & Conventions
 
-1. Fork the repository and create your branch from `main`.
-2. Write clear, documented, and well-tested code.
-3. Keep changes as focused and small as possible.
-4. Ensure all CI checks (linter, unit tests) pass.
-5. Submit a pull request with a detailed description of the changes.
+### Branch Naming
+Use descriptive, lowercase branch names prefixing the type of change:
+- `feat/add-file-sharing`
+- `fix/mdns-packet-drop`
+- `docs/clarify-key-agreement`
+- `refactor/clean-ws-state`
 
-## Development Guidelines
+### Commit Message Guidelines
+We follow the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification:
+```
+<type>(<scope>): <description>
 
-### Code Style
+[optional body]
 
-- **Desktop (Rust)**: Run `cargo fmt` and `cargo clippy` before committing. Follow standard Rust naming conventions.
-- **Desktop (React/TypeScript)**: Follow ESLint rules. Use Prettier to format. Prefer functional components with hooks.
-- **Android (Kotlin)**: Follow Kotlin style guidelines and Android Kotlin style guide. Use Jetpack Compose formatting.
+[optional footer(s)]
+```
 
-### Security Principles
+#### Types
+- `feat`: A new feature
+- `fix`: A bug fix
+- `docs`: Documentation changes
+- `style`: Changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc.)
+- `refactor`: A code change that neither fixes a bug nor adds a feature
+- `perf`: A code change that improves performance
+- `test`: Adding missing tests or correcting existing tests
+- `chore`: Changes to the build process or auxiliary tools and libraries
 
-Since ClipBridge handles clipboard sync, security is a tier-1 priority:
-1. **Never** transmit clipboard content in plaintext.
-2. **Never** log sensitive clipboard content or private keys.
-3. Validate all inputs, size limits, and nonces to prevent replay/overflow attacks.
-4. Use standard cryptographic libraries (**ring** in Rust, **Android Keystore** in Kotlin). Do not roll your own crypto implementations.
+#### Example
+```
+feat(desktop): add persistent device UUID storage
+
+Generates a random UUID on first start and stores it in device_id.txt 
+in Roaming/ClipBridge. Prevents ID mutation on relaunch.
+
+Closes #142
+```
+
+---
+
+## Coding Standards
+
+### Rust (Desktop Backend)
+- Format code using `cargo fmt` before staging.
+- Resolve all compiler warnings and run `cargo clippy` to ensure optimal and safe practices.
+- Add unit tests inside the module or integration tests in `tests/`.
+
+### TypeScript / React / React Native (Frontend)
+- Use functional components with hooks.
+- Format codebase using Prettier (`npx prettier --write .`).
+- Use explicit TypeScript types. Avoid using `any` whenever possible.
+
+---
+
+## Pull Request Checklist
+
+Before submitting your pull request, verify:
+- [ ] Code builds cleanly without compile-time errors or warnings.
+- [ ] Linter is happy (`npm run lint` / `cargo clippy`).
+- [ ] Tests pass locally (`npm run test` / `cargo test`).
+- [ ] Commits are structured logically and follow Conventional Commits.
+- [ ] Target branch is set to `main`.
+- [ ] Documentation is updated (if proposing API, security, or setup alterations).
