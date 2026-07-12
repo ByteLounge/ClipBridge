@@ -14,6 +14,9 @@
     <!-- Camera for QR Pairing -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Notification Permission for Android 13+ -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- Startup Permission -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 

@@ -6,6 +6,9 @@ import android.content.Intent
 import android.os.*
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import com.clipbridge.MainActivity
 import com.clipbridge.data.*
 import dagger.hilt.android.AndroidEntryPoint
@@ -48,7 +51,15 @@ class ClipboardSyncService : Service() {
         super.onCreate()
         Log.d(TAG, "Service onCreate")
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("ClipBridge is running", "Ready to sync your clipboard"))
+        var hasNotificationPermission = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            hasNotificationPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        }
+        if (hasNotificationPermission) {
+            startForeground(NOTIFICATION_ID, buildNotification("ClipBridge is running", "Ready to sync your clipboard"))
+        } else {
+            Log.d(TAG, "Notification skipped because POST_NOTIFICATIONS permission has not been granted.")
+        }
 
         // Load or generate local Device ID
         val prefs = getSharedPreferences("clipbridge_prefs", Context.MODE_PRIVATE)
@@ -301,6 +312,14 @@ class ClipboardSyncService : Service() {
     }
 
     private fun updateNotificationText(text: String) {
+        var hasNotificationPermission = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            hasNotificationPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        }
+        if (!hasNotificationPermission) {
+            Log.d(TAG, "Notification skipped because POST_NOTIFICATIONS permission has not been granted.")
+            return
+        }
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(
             NOTIFICATION_ID,

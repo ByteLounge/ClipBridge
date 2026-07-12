@@ -1,9 +1,15 @@
 package com.clipbridge
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -36,12 +42,34 @@ class MainActivity : ComponentActivity() {
 
     @Inject lateinit var discoveryManager: DiscoveryManager
 
+    private val requestNotificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        val serviceIntent = Intent(this, ClipboardSyncService::class.java)
+        if (isGranted) {
+            Log.d("MainActivity", "Notification permission granted")
+            startForegroundService(serviceIntent)
+        } else {
+            Log.d("MainActivity", "Notification permission denied")
+            startService(serviceIntent)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // Start local network sync service
-        val correctIntent = Intent(this, ClipboardSyncService::class.java)
-        startForegroundService(correctIntent)
+        val serviceIntent = Intent(this, ClipboardSyncService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                startForegroundService(serviceIntent)
+            } else {
+                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                startService(serviceIntent)
+            }
+        } else {
+            startForegroundService(serviceIntent)
+        }
 
         // Bind discovery servers list to pairing screen bridge
         lifecycleScope.launch {
