@@ -17,6 +17,14 @@
     <!-- Notification Permission for Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Declare that camera hardware is optional for Chrome OS support -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+
     <!-- Startup Permission -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
