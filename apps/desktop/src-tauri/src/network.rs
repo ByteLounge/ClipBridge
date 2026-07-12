@@ -346,6 +346,7 @@ async fn handle_pair_ws(mut socket: WebSocket, state: Arc<Mutex<ServerState>>) {
 
     if let Ok(resp_str) = serde_json::to_string(&resp) {
         let _ = socket.send(Message::Text(resp_str)).await;
+        let _ = socket.close().await;
     }
 }
 

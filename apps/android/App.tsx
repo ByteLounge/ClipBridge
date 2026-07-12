@@ -475,6 +475,8 @@ export default function App() {
     const url = `ws://${ipAddress}:${port}/pair`;
     console.log(`[ClipBridge Pair] ✓ WebSocket connecting to: ${url}`);
 
+    let pairingSuccess = false;
+
     try {
       const { privateKey, publicKey } = generateX25519KeyPair();
       const ws = new WebSocket(url);
@@ -512,6 +514,8 @@ export default function App() {
           console.log('[ClipBridge Pair] Deriving shared sync key...');
           const syncKey = await deriveSharedKey(privateKey, serverPubBytes);
           console.log('[ClipBridge Pair] ✓ Authentication successful');
+
+          pairingSuccess = true;
 
           // Save paired device metadata and derived key
           const newDevice: PairedDevice = {
@@ -552,12 +556,18 @@ export default function App() {
       };
 
       ws.onclose = (event) => {
+        clearTimeout(pairingTimeout);
         console.log(`[ClipBridge Pair] WebSocket closed. URL: ${url}, Code: ${event.code}, Reason: ${event.reason || 'None'}`);
+        console.log(`[ClipBridge Pair] Close details - Was pairing successful? ${pairingSuccess}. Was this expected? ${pairingSuccess}. Was persistent sync socket connected? ${wsRef.current && wsRef.current.readyState === WebSocket.OPEN}`);
       };
 
       ws.onerror = (err: any) => {
         clearTimeout(pairingTimeout);
         isPairingRef.current = false;
+        if (pairingSuccess) {
+          console.log('[ClipBridge Pair] Pairing socket closed normally after success (error event ignored).');
+          return;
+        }
         console.error('[ClipBridge Pair] WebSocket error during pairing:', JSON.stringify(err));
         console.error('[ClipBridge Pair] Disconnect reason details - WebSocket URL:', url);
         setPairingLoading(false);
