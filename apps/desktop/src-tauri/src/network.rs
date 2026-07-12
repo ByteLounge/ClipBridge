@@ -159,6 +159,7 @@ pub fn start_webserver(port: u16, mut clip_rx: broadcast::Receiver<ClipboardUpda
     let app = Router::new()
         .route("/pair", get(pair_handler))
         .route("/ws", get(ws_handler))
+        .route("/test/qr", get(test_qr_handler))
         .with_state(STATE.clone());
 
     // Listen loop
@@ -239,6 +240,35 @@ async fn pair_handler(
     State(state): State<Arc<Mutex<ServerState>>>,
 ) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_pair_ws(socket, state))
+}
+
+async fn test_qr_handler(
+    State(state): State<Arc<Mutex<ServerState>>>,
+) -> impl IntoResponse {
+    let (device_id, display_name, pub_key) = {
+        let mut guard = state.lock().unwrap();
+        if guard.ephemeral_pairing_key.is_none() {
+            let (priv_key, pub_key) = crate::crypto::generate_keypair();
+            guard.ephemeral_pairing_key = Some(priv_key);
+            guard.ephemeral_public_key = Some(pub_key.clone());
+        }
+        (
+            guard.device_id.clone(),
+            guard.display_name.clone(),
+            guard.ephemeral_public_key.clone().unwrap_or_default()
+        )
+    };
+    let my_ip = local_ip_address::local_ip()
+        .map(|ip| ip.to_string())
+        .unwrap_or_else(|_| "127.0.0.1".to_string());
+    
+    axum::Json(serde_json::json!({
+        "device_id": device_id,
+        "public_key": hex::encode(pub_key),
+        "name": display_name,
+        "ip": my_ip,
+        "port": 54670
+    }))
 }
 
 async fn handle_pair_ws(mut socket: WebSocket, state: Arc<Mutex<ServerState>>) {
